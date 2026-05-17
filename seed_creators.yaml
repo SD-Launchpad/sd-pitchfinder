@@ -1,0 +1,357 @@
+# PitchFinder seed creator library.
+# ~30 AI/tech creators across newsletters, podcasts, YouTube.
+# Verified entries had their feed_url confirmed live via WebFetch / iTunes Search.
+# Entries marked "feed_url unverified" in notes need manual confirmation
+# before `pitchfinder refresh` will pick them up.
+
+creators:
+  # ---------- Newsletters / blogs ----------
+  - name: Nathan Lambert
+    platform: substack
+    handle: natolambert
+    url: https://www.interconnects.ai
+    feed_url: https://www.interconnects.ai/feed
+    topics: [open-models, rl, post-training, deep-research]
+    influence_score: 95
+    contact:
+      email: null
+      other: null
+    notes: "Heavy hitter for open-source / post-training releases. Interconnects."
+
+  - name: Jack Clark
+    platform: substack
+    handle: importai
+    url: https://importai.substack.com
+    feed_url: https://importai.substack.com/feed
+    topics: [policy, frontier-models, ai-safety, anthropic]
+    influence_score: 90
+    contact:
+      email: null
+      other: null
+    notes: "Co-founder of Anthropic; weekly AI roundup. Top policy/research influence."
+
+  - name: Simon Willison
+    platform: blog
+    handle: simonwillison
+    url: https://simonwillison.net
+    feed_url: https://simonwillison.net/atom/everything/
+    topics: [llms, tools, developer-experience, sqlite, prompt-injection]
+    influence_score: 92
+    contact:
+      email: null
+      other: https://simonwillison.net/about/
+    notes: "Practical LLM tooling, daily linkblog. Strong dev audience."
+
+  - name: Sebastian Raschka
+    platform: substack
+    handle: rasbt
+    url: https://magazine.sebastianraschka.com
+    feed_url: https://magazine.sebastianraschka.com/feed
+    topics: [llm-architectures, training, research-explainers]
+    influence_score: 88
+    contact:
+      email: null
+      other: null
+    notes: "Ahead of AI. Deep technical newsletter on LLM internals."
+
+  - name: Lilian Weng
+    platform: blog
+    handle: lilianweng
+    url: https://lilianweng.github.io
+    feed_url: https://lilianweng.github.io/index.xml
+    topics: [research-surveys, agents, rl, safety]
+    influence_score: 90
+    contact:
+      email: null
+      other: null
+    notes: "Former OpenAI safety lead. Long-form research deep dives."
+
+  - name: swyx (Latent Space newsletter)
+    platform: substack
+    handle: latentspace
+    url: https://www.latent.space
+    feed_url: https://www.latent.space/feed
+    topics: [ai-engineering, devtools, agents, infra]
+    influence_score: 92
+    contact:
+      email: null
+      other: null
+    notes: "AI engineer audience. Newsletter and the Latent Space podcast (separate entry)."
+
+  - name: Chip Huyen
+    platform: blog
+    handle: chiphuyen
+    url: https://huyenchip.com
+    feed_url: https://huyenchip.com/feed.xml
+    topics: [ml-systems, production-llms, mlops]
+    influence_score: 88
+    contact:
+      email: null
+      other: null
+    notes: "ML systems author; production-LLM perspective."
+
+  - name: Eugene Yan
+    platform: blog
+    handle: eugeneyan
+    url: https://eugeneyan.com
+    feed_url: https://eugeneyan.com/rss/
+    topics: [applied-ml, evals, rec-systems, llm-products]
+    influence_score: 82
+    contact:
+      email: null
+      other: null
+    notes: "Applied ML / LLM evals at Amazon."
+
+  - name: Dylan Patel (SemiAnalysis)
+    platform: blog
+    handle: semianalysis
+    url: https://semianalysis.com
+    feed_url: https://semianalysis.com/feed/
+    topics: [datacenters, gpus, inference-economics, supply-chain]
+    influence_score: 93
+    contact:
+      email: null
+      other: null
+    notes: "Authoritative on AI hardware/infra economics."
+
+  - name: Zvi Mowshowitz
+    platform: substack
+    handle: thezvi
+    url: https://thezvi.substack.com
+    feed_url: https://thezvi.substack.com/feed
+    topics: [policy, ai-safety, weekly-roundup]
+    influence_score: 80
+    contact:
+      email: null
+      other: null
+    notes: "Exhaustive weekly AI roundups. Rationalist-adjacent audience."
+
+  - name: Gary Marcus
+    platform: substack
+    handle: garymarcus
+    url: https://garymarcus.substack.com
+    feed_url: https://garymarcus.substack.com/feed
+    topics: [critique, neurosymbolic, ai-skepticism]
+    influence_score: 75
+    contact:
+      email: null
+      other: null
+    notes: "Frequent LLM skeptic; large mainstream reach."
+
+  - name: Ethan Mollick
+    platform: substack
+    handle: oneusefulthing
+    url: https://www.oneusefulthing.org
+    feed_url: https://www.oneusefulthing.org/feed
+    topics: [ai-at-work, education, knowledge-workers]
+    influence_score: 90
+    contact:
+      email: null
+      other: null
+    notes: "Wharton prof. Practical AI for knowledge workers."
+
+  - name: Rohit Krishnan
+    platform: substack
+    handle: strangeloopcanon
+    url: https://www.strangeloopcanon.com
+    feed_url: https://www.strangeloopcanon.com/feed
+    topics: [systems, economics, ai-strategy]
+    influence_score: 70
+    contact:
+      email: null
+      other: null
+    notes: "Strange Loop Canon. Long essays on AI + economics."
+
+  - name: Sebastian Ruder
+    platform: blog
+    handle: ruder
+    url: https://www.ruder.io
+    feed_url: https://www.ruder.io/rss/
+    topics: [nlp, evals, multilingual, research]
+    influence_score: 78
+    contact:
+      email: null
+      other: null
+    notes: "NLP researcher; deep evals/research posts."
+
+  - name: Charlie Guo (Artificial Ignorance)
+    platform: substack
+    handle: artificialignorance
+    url: https://www.artificialignorance.com
+    feed_url: null
+    topics: [ai-product, news-roundup]
+    influence_score: 60
+    contact:
+      email: null
+      other: null
+    notes: "feed_url unverified — site refused connection during build, retry: https://www.artificialignorance.com/feed or https://artificialignorance.substack.com/feed"
+
+  # ---------- Podcasts ----------
+  - name: Latent Space Podcast
+    platform: podcast
+    handle: latentspace-pod
+    url: https://www.latent.space
+    feed_url: https://api.substack.com/feed/podcast/1084089.rss
+    topics: [ai-engineering, devtools, founders]
+    influence_score: 90
+    contact:
+      email: null
+      other: null
+    notes: "swyx + Alessio. Same brand as the newsletter, separate feed."
+
+  - name: The Cognitive Revolution
+    platform: podcast
+    handle: cognitive-revolution
+    url: https://www.cognitiverevolution.ai
+    feed_url: https://feeds.megaphone.fm/RINTP3108857801
+    topics: [builders, frontier-models, capability-analysis]
+    influence_score: 85
+    contact:
+      email: null
+      other: null
+    notes: "Nathan Labenz + Erik Torenberg."
+
+  - name: No Priors
+    platform: podcast
+    handle: nopriors
+    url: https://www.no-priors.com
+    feed_url: https://feeds.megaphone.fm/nopriors
+    topics: [ai-startups, founders, conviction]
+    influence_score: 85
+    contact:
+      email: null
+      other: null
+    notes: "Sarah Guo / Elad Gil. Founder + investor lens."
+
+  - name: Dwarkesh Patel
+    platform: podcast
+    handle: dwarkesh
+    url: https://www.dwarkesh.com
+    feed_url: https://www.dwarkesh.com/feed
+    topics: [long-form-interviews, researchers, scaling]
+    influence_score: 92
+    contact:
+      email: null
+      other: null
+    notes: "Long-form interviews with top researchers."
+
+  - name: Machine Learning Street Talk (podcast)
+    platform: podcast
+    handle: mlst-pod
+    url: https://www.machinelearningstreettalk.com
+    feed_url: https://anchor.fm/s/1e4a0eac/podcast/rss
+    topics: [research-debates, philosophy-of-ai, deep-technical]
+    influence_score: 80
+    contact:
+      email: null
+      other: null
+    notes: "Tim Scarfe. Deep technical podcast (separate from YouTube channel)."
+
+  - name: The Gradient Podcast
+    platform: podcast
+    handle: gradient-pod
+    url: https://thegradientpub.substack.com
+    feed_url: https://anchor.fm/s/1f7d47e4/podcast/rss
+    topics: [research-interviews, academia]
+    influence_score: 75
+    contact:
+      email: null
+      other: null
+    notes: "Daniel Bashir. Researcher-focused interviews."
+
+  - name: TWIML AI Podcast
+    platform: podcast
+    handle: twiml
+    url: https://twimlai.com
+    feed_url: https://feeds.megaphone.fm/MLN2155636147
+    topics: [applied-ml, enterprise-ai, weekly-interviews]
+    influence_score: 78
+    contact:
+      email: null
+      other: null
+    notes: "Sam Charrington. Long-running ML interview podcast."
+
+  - name: Practical AI
+    platform: podcast
+    handle: practical-ai
+    url: https://changelog.com/practicalai
+    feed_url: https://feeds.transistor.fm/practical-ai-machine-learning-data-science-llm
+    topics: [applied-ai, developer-focused, enterprise]
+    influence_score: 75
+    contact:
+      email: null
+      other: null
+    notes: "Daniel Whitenack et al. Developer-facing AI podcast."
+
+  # ---------- YouTube ----------
+  - name: Andrej Karpathy
+    platform: youtube
+    handle: karpathy
+    url: https://www.youtube.com/@AndrejKarpathy
+    feed_url: https://www.youtube.com/feeds/videos.xml?channel_id=UCPk8m_r6fkUSYmvgCBwq-sw
+    topics: [llm-fundamentals, training, education]
+    influence_score: 98
+    contact:
+      email: null
+      other: null
+    notes: "Lectures and deep dives. Massive reach with technical audience."
+
+  - name: Yannic Kilcher
+    platform: youtube
+    handle: yannic
+    url: https://www.youtube.com/@YannicKilcher
+    feed_url: https://www.youtube.com/feeds/videos.xml?channel_id=UCZHmQk67mSJgfCCTn7xBfew
+    topics: [paper-explainers, research-commentary]
+    influence_score: 80
+    contact:
+      email: null
+      other: null
+    notes: "ML paper explainers."
+
+  - name: Machine Learning Street Talk (YouTube)
+    platform: youtube
+    handle: mlst-yt
+    url: https://www.youtube.com/@MachineLearningStreetTalk
+    feed_url: https://www.youtube.com/feeds/videos.xml?channel_id=UCMLtBahI5DMrt0NPvDSoIRQ
+    topics: [research-debates, philosophy-of-ai]
+    influence_score: 78
+    contact:
+      email: null
+      other: null
+    notes: "Tim Scarfe's YouTube channel (counterpart to the podcast)."
+
+  - name: Two Minute Papers
+    platform: youtube
+    handle: twominutepapers
+    url: https://www.youtube.com/@TwoMinutePapers
+    feed_url: https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg
+    topics: [research-summaries, computer-graphics, ai]
+    influence_score: 82
+    contact:
+      email: null
+      other: null
+    notes: "Károly Zsolnai-Fehér. Short research summaries, huge audience."
+
+  - name: AI Explained
+    platform: youtube
+    handle: aiexplained
+    url: https://www.youtube.com/@aiexplained-official
+    feed_url: https://www.youtube.com/feeds/videos.xml?channel_id=UCNJ1Ymd5yFuUPtn21xtRbbw
+    topics: [news-analysis, capability-reviews, frontier-models]
+    influence_score: 80
+    contact:
+      email: null
+      other: null
+    notes: "Philip's AI news/analysis channel. Channel ID UCNJ1Ymd5yFuUPtn21xtRbbw."
+
+  - name: bycloud
+    platform: youtube
+    handle: bycloudai
+    url: https://www.youtube.com/@bycloudAI
+    feed_url: null
+    topics: [research-survey, llm-news]
+    influence_score: 70
+    contact:
+      email: null
+      other: null
+    notes: "feed_url unverified — @bycloudAI handle resolves to channel UCfg9ux4m8P0YDITTPptrmLg labeled 'bycloud 2', last active 2024-10. His primary active channel has a different ID; find a recent video URL on https://www.youtube.com/@bycloudAI and grab channelId from the video page source."
