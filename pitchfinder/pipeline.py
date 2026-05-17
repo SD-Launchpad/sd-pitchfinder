@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -387,8 +388,14 @@ def _render_results(
 
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(_render_markdown(description, creators, search_id))
-        console.print(f"\n[green]Markdown report written:[/green] {output}")
+        suffix = output.suffix.lower()
+        if suffix in (".html", ".htm"):
+            output.write_text(_render_html(description, creators, search_id))
+            label = "HTML report"
+        else:
+            output.write_text(_render_markdown(description, creators, search_id))
+            label = "Markdown report"
+        console.print(f"\n[green]{label} written:[/green] {output.resolve()}")
 
 
 def _render_markdown(description: str, creators: list[dict], search_id: int) -> str:
@@ -428,6 +435,181 @@ def _render_markdown(description: str, creators: list[dict], search_id: int) -> 
                     lines.append(f"  - _refs: {ref}_")
             lines.append("")
     return "\n".join(lines)
+
+
+def _render_html(description: str, creators: list[dict], search_id: int) -> str:
+    def esc(s: object) -> str:
+        return html.escape(str(s if s is not None else ""), quote=True)
+
+    def link(url: str, text: str | None = None) -> str:
+        if not url or not (url.startswith("http://") or url.startswith("https://") or url.startswith("mailto:")):
+            return esc(text or url or "")
+        return f'<a href="{esc(url)}" target="_blank" rel="noopener">{esc(text or url)}</a>'
+
+    generated = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+    parts: list[str] = []
+    parts.append("<!DOCTYPE html>")
+    parts.append('<html lang="en"><head>')
+    parts.append('<meta charset="utf-8">')
+    parts.append(f"<title>PitchFinder — search {search_id}</title>")
+    parts.append("""<style>
+:root { color-scheme: light dark; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  max-width: 960px;
+  margin: 2em auto;
+  padding: 0 1em;
+  line-height: 1.55;
+  color: #1f2937;
+  background: #fafafa;
+}
+h1 { margin-bottom: 0.2em; }
+.meta { color: #6b7280; font-size: 0.9em; margin-bottom: 2em; }
+blockquote {
+  border-left: 4px solid #2563eb;
+  background: #f0f7ff;
+  padding: 0.75em 1em;
+  margin: 0 0 2em 0;
+  border-radius: 4px;
+}
+.summary-table {
+  width: 100%; border-collapse: collapse; margin-bottom: 2.5em;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  border-radius: 6px; overflow: hidden;
+}
+.summary-table th, .summary-table td {
+  padding: 0.55em 0.75em; text-align: left; border-bottom: 1px solid #e5e7eb;
+  font-size: 0.92em;
+}
+.summary-table th { background: #f3f4f6; font-weight: 600; }
+.summary-table tr:last-child td { border-bottom: none; }
+.summary-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.creator {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1.25em 1.5em;
+  margin: 1em 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.creator h3 { margin: 0 0 0.4em 0; font-size: 1.2em; }
+.badge {
+  display: inline-block; padding: 0.1em 0.55em; margin-left: 0.4em;
+  font-size: 0.78em; border-radius: 999px; background: #dbeafe;
+  color: #1e40af; font-weight: 600;
+}
+.badge.platform { background: #e0e7ff; color: #3730a3; }
+.creator .meta-row { color: #4b5563; font-size: 0.9em; margin-bottom: 0.8em; }
+.creator .meta-row a { color: #2563eb; text-decoration: none; }
+.creator .meta-row a:hover { text-decoration: underline; }
+.item { margin: 0.5em 0 0.5em 0; padding: 0.55em 0.75em; background: #f9fafb; border-radius: 4px; }
+.item .title-line { font-weight: 500; }
+.item .score-pill { display: inline-block; min-width: 2.4em; text-align: center; padding: 0.05em 0.4em; margin-right: 0.4em; background: #2563eb; color: white; border-radius: 4px; font-size: 0.85em; font-weight: 600; }
+.item .reason { color: #6b7280; font-size: 0.88em; margin: 0.3em 0 0 2.8em; font-style: italic; }
+.angles { margin-top: 0.9em; }
+.angles-label { font-weight: 600; color: #374151; margin-bottom: 0.4em; }
+.angle { padding: 0.55em 0.75em; background: #fef3c7; border-left: 3px solid #f59e0b; margin: 0.3em 0; border-radius: 4px; }
+.angle .ref { display: block; color: #6b7280; font-size: 0.82em; margin-top: 0.3em; }
+@media (prefers-color-scheme: dark) {
+  body { background: #0f172a; color: #e5e7eb; }
+  blockquote { background: #1e293b; border-left-color: #60a5fa; }
+  .creator { background: #1e293b; border-color: #334155; }
+  .summary-table { background: #1e293b; }
+  .summary-table th { background: #334155; }
+  .summary-table th, .summary-table td { border-bottom-color: #334155; color: #e5e7eb; }
+  .item { background: #0f172a; }
+  .badge { background: #1e3a8a; color: #dbeafe; }
+  .badge.platform { background: #312e81; color: #c7d2fe; }
+  .angle { background: #422006; border-left-color: #fbbf24; }
+  .creator .meta-row { color: #cbd5e1; }
+  .item .reason, .angle .ref { color: #94a3b8; }
+}
+</style>""")
+    parts.append("</head><body>")
+    parts.append(f"<h1>PitchFinder report — search {search_id}</h1>")
+    parts.append(f'<div class="meta">Generated {esc(generated)} · {len(creators)} creators</div>')
+    parts.append("<h2>Launch description</h2>")
+    parts.append(f"<blockquote>{esc(description)}</blockquote>")
+
+    parts.append(f"<h2>Ranked creators ({len(creators)})</h2>")
+
+    # Summary table
+    parts.append('<table class="summary-table"><thead><tr>')
+    parts.append("<th>#</th><th>Creator</th><th>Platform</th><th>Score</th><th>Influence</th><th>Channel</th><th>Contact</th>")
+    parts.append("</tr></thead><tbody>")
+    for i, c in enumerate(creators, 1):
+        channel_link = link(c.get("url"), c.get("url"))
+        contact = c.get("contact_email") or c.get("contact_other") or "—"
+        if c.get("contact_email"):
+            contact = link(f"mailto:{c['contact_email']}", c["contact_email"])
+        elif c.get("contact_other"):
+            contact = link(c["contact_other"], c["contact_other"])
+        parts.append(
+            f"<tr><td class=num>{i}</td>"
+            f"<td>{esc(c['name'])}</td>"
+            f"<td>{esc(c['platform'])}</td>"
+            f"<td class=num>{c['top_score']}</td>"
+            f"<td class=num>{c['influence_score']}</td>"
+            f"<td>{channel_link}</td>"
+            f"<td>{contact}</td></tr>"
+        )
+    parts.append("</tbody></table>")
+
+    # Per-creator detail
+    for i, c in enumerate(creators, 1):
+        parts.append('<div class="creator">')
+        parts.append(
+            f'<h3>{i}. {esc(c["name"])} '
+            f'<span class="badge platform">{esc(c["platform"])}</span> '
+            f'<span class="badge">score {c["top_score"]}</span>'
+            f'</h3>'
+        )
+
+        meta_bits: list[str] = []
+        if c.get("url"):
+            meta_bits.append(f"Channel: {link(c['url'])}")
+        meta_bits.append(f"Influence: {c['influence_score']}")
+        if c.get("contact_email"):
+            meta_bits.append(f"Email: {link('mailto:' + c['contact_email'], c['contact_email'])}")
+        elif c.get("contact_other"):
+            meta_bits.append(f"Contact: {link(c['contact_other'])}")
+        parts.append(f'<div class="meta-row">{" · ".join(meta_bits)}</div>')
+
+        if c.get("top_items"):
+            parts.append("<div><strong>Recent relevant content:</strong></div>")
+            for it in c["top_items"]:
+                title = it.get("title") or "(untitled)"
+                ct = it.get("content_type", "")
+                pub = (it.get("published_at") or "")[:10]
+                parts.append('<div class="item">')
+                parts.append(
+                    f'<div class="title-line">'
+                    f'<span class="score-pill">{it["score"]}</span>'
+                    f'{link(it.get("url"), title)} '
+                    f'<span style="color:#6b7280; font-size:0.85em;">({esc(ct)}{", " + esc(pub) if pub else ""})</span>'
+                    f"</div>"
+                )
+                if it.get("reason"):
+                    parts.append(f'<div class="reason">{esc(it["reason"])}</div>')
+                parts.append("</div>")
+
+        if c.get("angles"):
+            parts.append('<div class="angles">')
+            parts.append('<div class="angles-label">Pitch angles:</div>')
+            for a in c["angles"]:
+                parts.append('<div class="angle">')
+                parts.append(esc(a.get("angle", "")))
+                ref = a.get("references_item")
+                if ref:
+                    parts.append(f'<span class="ref">refs: {esc(ref)}</span>')
+                parts.append("</div>")
+            parts.append("</div>")
+
+        parts.append("</div>")
+
+    parts.append("</body></html>")
+    return "\n".join(parts)
 
 
 # ---------- show ----------

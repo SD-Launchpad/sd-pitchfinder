@@ -51,7 +51,10 @@ def fetch_feed(feed_url: str, content_type: str, lookback_days: int) -> list[Fee
     items: list[FeedItem] = []
     for entry in parsed.entries:
         url = entry.get("link") or entry.get("id") or ""
-        if not url:
+        # Some podcast feeds put a GUID (e.g. "e12140a6-...") in <guid>/id
+        # rather than a web URL — only accept http(s) URLs so the UI stays
+        # clickable and the items table stays useful.
+        if not url or not (url.startswith("http://") or url.startswith("https://")):
             continue
 
         published = _entry_published(entry)
