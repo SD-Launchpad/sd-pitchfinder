@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import re
+import time
 from typing import Any
 
 from openai import OpenAI
@@ -14,7 +16,7 @@ logger = logging.getLogger("pitchfinder.llm")
 
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_RELEVANCE_MODEL = "deepseek/deepseek-chat-v3.1"
-DEFAULT_PITCH_MODEL = "deepseek/deepseek-chat-v3.1"
+DEFAULT_PITCH_MODEL = "anthropic/claude-sonnet-4.6"
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
 
@@ -54,12 +56,8 @@ def _strip_fences(text: str) -> str:
     return _FENCE_RE.sub("", text).strip()
 
 
-def _call_json(model: str, prompt: str, max_tokens: int = 1024) -> Any:
-    """Make a single LLM call expecting JSON output.
-
-    MiroThinker models default to SSE streaming and only emit content in
-    delta chunks — we accumulate them. Everything else goes non-stream.
-    """
+def _call_once(model: str, prompt: str, max_tokens: int) -> str:
+    """One LLM round-trip. Returns raw assistant text (may be empty)."""
     client = _client_for_model(model)
     use_stream = model.startswith("mirothinker")
 
@@ -77,28 +75,73 @@ def _call_json(model: str, prompt: str, max_tokens: int = 1024) -> Any:
             delta = chunk.choices[0].delta
             if delta and getattr(delta, "content", None):
                 buf.append(delta.content)
-        text = "".join(buf)
-    else:
-        resp = client.chat.completions.create(
-            model=model,
-            max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = resp.choices[0].message.content or ""
+        return "".join(buf)
 
+    resp = client.chat.completions.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.choices[0].message.content or ""
+
+
+def _parse_json(text: str) -> Any:
+    """Try strict, then fence-strip + first {...}/[...] salvage."""
     cleaned = _strip_fences(text)
+    if not cleaned:
+        raise ValueError("empty response")
     try:
         return json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        # Salvage: pull out first {...} or [...] block
+    except json.JSONDecodeError:
         m = re.search(r"(\{.*\}|\[.*\])", cleaned, re.DOTALL)
         if m:
-            try:
-                return json.loads(m.group(1))
-            except Exception:
-                pass
-        logger.warning("JSON parse failed (model=%s): %s; raw=%r", model, exc, cleaned[:300])
+            return json.loads(m.group(1))
         raise
+
+
+def _call_json(model: str, prompt: str, max_tokens: int = 1024, max_retries: int = 2) -> Any:
+    """Make an LLM call expecting JSON output with bounded retries.
+
+    Retries on:
+    - empty / whitespace-only responses (common on flaky OpenRouter routes
+      like v4-pro / glm-5.1 → ~40-86% empty in our testing)
+    - transient SSE/network errors (MiroThinker occasionally drops the
+      streamed body, e.g. 'peer closed connection')
+    - JSON parse failures (model output a near-miss we couldn't salvage)
+
+    MiroThinker uses streaming (SSE). Everything else uses non-stream.
+    Final failure raises so the caller can degrade gracefully.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            text = _call_once(model, prompt, max_tokens)
+            if not text.strip():
+                raise ValueError("empty response from model")
+            return _parse_json(text)
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                # Exponential backoff with jitter so we don't sync retry storms.
+                delay = (2 ** attempt) + random.uniform(0, 0.5)
+                logger.warning(
+                    "LLM call attempt %d/%d failed (model=%s): %s — retrying in %.1fs",
+                    attempt + 1,
+                    max_retries + 1,
+                    model,
+                    exc,
+                    delay,
+                )
+                time.sleep(delay)
+            else:
+                logger.warning(
+                    "LLM call exhausted retries (model=%s, attempts=%d): %s",
+                    model,
+                    attempt + 1,
+                    exc,
+                )
+    assert last_exc is not None
+    raise last_exc
 
 
 # ---------- 1. Topic extraction ----------
