@@ -214,14 +214,14 @@ creators:
   - name: No Priors
     platform: podcast
     handle: nopriors
-    url: https://www.nopriors.com
+    url: https://www.youtube.com/@NoPriorsPodcast
     feed_url: https://feeds.megaphone.fm/nopriors
     topics: [ai-startups, founders, conviction]
     influence_score: 85
     contact:
       email: null
       other: null
-    notes: "Sarah Guo / Elad Gil. Founder + investor lens."
+    notes: "Sarah Guo / Elad Gil. Founder + investor lens. No standalone web site — show@no-priors.com is the contact email (domain has no public web page). YouTube channel is the primary public-facing presence."
 
   - name: Dwarkesh Patel
     platform: podcast

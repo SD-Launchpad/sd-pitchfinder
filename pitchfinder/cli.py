@@ -146,6 +146,75 @@ def deep_dive(
     )
 
 
+@app.command()
+def lint(
+    concurrency: int = typer.Option(6, "--concurrency"),
+    db: str = typer.Option(DEFAULT_DB),
+) -> None:
+    """Verify every creator url actually points to their channel.
+
+    Catches HTTP-200 squatters (e.g. GoDaddy parking pages), dead sites,
+    and pages that load but contain unrelated content. Uses the relevance
+    LLM (Haiku-class) — ~$0.01 for the whole seed.
+    """
+    from rich.table import Table
+    from pitchfinder.db import get_conn
+    from pitchfinder.lint import lint_creators
+
+    conn = get_conn(db)
+    try:
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT id, name, url FROM creators WHERE url IS NOT NULL"
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
+
+    if not rows:
+        console.print("[yellow]No creators with a url.[/yellow]")
+        return
+
+    console.print(f"Linting {len(rows)} URLs (concurrency={concurrency})...")
+    results = lint_creators(rows, concurrency=concurrency)
+
+    table = Table(title="URL lint results")
+    table.add_column("id", justify="right")
+    table.add_column("creator")
+    table.add_column("status")
+    table.add_column("http", justify="right")
+    table.add_column("reason")
+
+    counts = {"ok": 0, "squatter": 0, "wrong_content": 0, "uncertain": 0, "unreachable": 0}
+    for r in results:
+        counts[r.content_status] = counts.get(r.content_status, 0) + 1
+        color = {
+            "ok": "green",
+            "squatter": "red",
+            "wrong_content": "red",
+            "uncertain": "yellow",
+            "unreachable": "red",
+        }.get(r.content_status, "white")
+        table.add_row(
+            str(r.creator_id),
+            r.name,
+            f"[{color}]{r.content_status}[/{color}]",
+            str(r.http_status or "—"),
+            r.reason[:100],
+        )
+    console.print(table)
+
+    summary = ", ".join(f"{k}={v}" for k, v in counts.items() if v)
+    console.print(f"\n[bold]Summary:[/bold] {summary}")
+    bad = counts.get("squatter", 0) + counts.get("wrong_content", 0) + counts.get("unreachable", 0)
+    if bad:
+        console.print(
+            f"[red]{bad} URL(s) need attention.[/red] Edit seed_creators.yaml "
+            "and run `pitchfinder load seed_creators.yaml` to fix."
+        )
+
+
 @app.command("discover-podcasts")
 def discover_podcasts(
     keyword: str = typer.Argument(...),
