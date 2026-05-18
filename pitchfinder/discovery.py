@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
+import yaml
 from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.table import Table
@@ -166,6 +169,154 @@ def print_substack_candidates(candidates: list[dict[str, Any]]) -> None:
             f"      other: null\n"
             f"    notes: \"Discovered via Substack recommendations; pending verification.\"\n"
         )
+
+
+def discover_relevant_creators(
+    topic_description: str,
+    existing_names: list[str],
+    limit: int = 30,
+    model: str | None = None,
+) -> list[dict[str, Any]]:
+    """Use MiroThinker (web search) to find AI/tech creators relevant to a launch topic.
+
+    Returns a list of candidate dicts:
+      { name, platform, handle, url, feed_url, topics, influence_score, why_relevant }
+
+    Caller is expected to review the output before adding to seed_creators.yaml.
+    """
+    from pitchfinder.llm import _call_json
+    from pitchfinder.research import deep_research_model
+
+    chosen = model or deep_research_model()
+    skip_block = "\n".join(f"- {n}" for n in existing_names[:60])
+
+    prompt = f"""You are helping expand a creator-pitch database. Find {limit} ACTIVE AI/tech creators
+(newsletter writers, podcast hosts, YouTubers, bloggers) who would be the most
+relevant audience for the launch described below. Use live web search to confirm
+each one is real, active in 2025-2026, and has a working public channel.
+
+LAUNCH WE'RE PITCHING:
+{topic_description}
+
+Already in our database — DO NOT return any of these (find different people):
+{skip_block}
+
+For each candidate:
+- Confirm the channel exists and they posted/episode'd/uploaded in the last 6 months.
+- Identify their platform (substack / blog / podcast / youtube).
+- Find their channel URL (the human-facing page, not the RSS).
+- Find their RSS / Atom / podcast feed URL where applicable (search the page source for <link rel="alternate" type="application/rss+xml"> or "/feed" or megaphone/transistor/anchor URLs).
+- Suggest 3-5 topic tags.
+- Estimate their influence (50=niche, 70=mid, 85=well-known in AI, 95=top-tier reach).
+- Write one sentence on why they fit this launch.
+
+Skip creators who are mainstream news outlets (Bloomberg, NYT, etc.) — we want
+individual voices. Skip mainland Chinese media (机器之心, 量子位, 36Kr, etc.).
+Skip X/Twitter-only personalities (we ingest RSS, not Twitter).
+Prefer creators in software engineering, AI research, AI applications, agents,
+verifiable reasoning, deep research, open-source models, frontier AI.
+
+Return JSON only — an array of objects with this exact shape:
+[
+  {{
+    "name": "Full Name",
+    "platform": "substack|blog|podcast|youtube",
+    "handle": "short-lowercase-handle-for-unique-key",
+    "url": "https://...",
+    "feed_url": "https://... or empty string if you couldn't find one",
+    "topics": ["topic1", "topic2", "..."],
+    "influence_score": 70,
+    "why_relevant": "one-sentence rationale"
+  }}
+]"""
+    try:
+        result = _call_json(chosen, prompt, max_tokens=8192)
+    except Exception as exc:
+        logger.warning("discover_relevant_creators LLM call failed: %s", exc)
+        return []
+
+    if not isinstance(result, list):
+        logger.warning("expected JSON array, got %s", type(result).__name__)
+        return []
+
+    cleaned: list[dict[str, Any]] = []
+    existing_lower = {n.strip().lower() for n in existing_names}
+    for entry in result:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name", "")).strip()
+        if not name or name.lower() in existing_lower:
+            continue
+        platform = str(entry.get("platform", "")).strip().lower()
+        if platform not in {"substack", "blog", "podcast", "youtube", "beehiiv"}:
+            continue
+        handle = str(entry.get("handle", "")).strip().lower() or _slugify(name)
+        url = str(entry.get("url", "")).strip()
+        feed_url = str(entry.get("feed_url", "")).strip() or None
+        topics = entry.get("topics", []) or []
+        topics = [str(t)[:60] for t in topics if t][:8]
+        try:
+            inf = int(entry.get("influence_score", 50))
+        except (TypeError, ValueError):
+            inf = 50
+        inf = max(0, min(100, inf))
+        why = str(entry.get("why_relevant", ""))[:400]
+        cleaned.append(
+            {
+                "name": name,
+                "platform": platform,
+                "handle": handle,
+                "url": url,
+                "feed_url": feed_url,
+                "topics": topics,
+                "influence_score": inf,
+                "why_relevant": why,
+            }
+        )
+    return cleaned
+
+
+def write_candidates_yaml(candidates: list[dict[str, Any]], output_path: Path) -> None:
+    """Write candidates as YAML stanzas matching seed_creators.yaml format."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    body = {
+        "creators": [
+            {
+                "name": c["name"],
+                "platform": c["platform"],
+                "handle": c["handle"],
+                "url": c["url"],
+                "feed_url": c["feed_url"],
+                "topics": c["topics"],
+                "influence_score": c["influence_score"],
+                "contact": {"email": None, "other": None},
+                "notes": f"DISCOVERED via MiroThinker. Why: {c['why_relevant']}. Verify feed_url before loading.",
+            }
+            for c in candidates
+        ]
+    }
+    output_path.write_text(yaml.safe_dump(body, sort_keys=False, allow_unicode=True))
+
+
+def print_discovered_candidates(candidates: list[dict[str, Any]]) -> None:
+    if not candidates:
+        console.print("[yellow]No candidates returned.[/yellow]")
+        return
+    table = Table(title=f"Discovered creator candidates ({len(candidates)})")
+    table.add_column("#")
+    table.add_column("Name")
+    table.add_column("Platform")
+    table.add_column("Influence", justify="right")
+    table.add_column("Why")
+    for i, c in enumerate(candidates, 1):
+        table.add_row(
+            str(i),
+            c["name"],
+            c["platform"],
+            str(c["influence_score"]),
+            c["why_relevant"][:90],
+        )
+    console.print(table)
 
 
 def _slugify(s: str) -> str:

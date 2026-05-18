@@ -227,6 +227,59 @@ def discover_podcasts(
     print_podcast_candidates(candidates)
 
 
+@app.command("discover-creators")
+def discover_creators(
+    description: str = typer.Argument(..., help="Launch description / topic to find creators for"),
+    limit: int = typer.Option(30, "--limit"),
+    output: Optional[Path] = typer.Option(
+        Path("reports/discovered_candidates.yaml"),
+        "--output",
+        help="YAML file to write candidate stanzas to",
+    ),
+    model: Optional[str] = typer.Option(
+        None, "--model", help="Override deep-research model (default: MIROMIND_DEEPRESEARCH_MODEL)"
+    ),
+    db: str = typer.Option(DEFAULT_DB),
+) -> None:
+    """Use MiroThinker (web search) to expand the seed library.
+
+    Finds active AI/tech creators relevant to a launch topic, skipping
+    those already in the DB. Outputs YAML stanzas you can review and
+    paste into seed_creators.yaml before running `pitchfinder load`.
+    """
+    from pitchfinder.db import get_conn
+    from pitchfinder.discovery import (
+        discover_relevant_creators,
+        print_discovered_candidates,
+        write_candidates_yaml,
+    )
+
+    conn = get_conn(db)
+    try:
+        rows = conn.execute("SELECT name FROM creators").fetchall()
+        existing = [r["name"] for r in rows]
+    finally:
+        conn.close()
+    console.print(f"Found {len(existing)} existing creators; asking MiroThinker for {limit} new ones (this takes 5-15 min)...")
+
+    candidates = discover_relevant_creators(
+        topic_description=description,
+        existing_names=existing,
+        limit=limit,
+        model=model,
+    )
+
+    print_discovered_candidates(candidates)
+
+    if candidates and output:
+        write_candidates_yaml(candidates, output)
+        console.print(f"\n[green]Wrote candidate stanzas to[/green] {output.resolve()}")
+        console.print(
+            "Review them, then `cat reports/discovered_candidates.yaml >> seed_creators.yaml` "
+            "(or merge selectively) and run `pitchfinder lint` + `pitchfinder load`."
+        )
+
+
 @app.command("discover-substack")
 def discover_substack(
     substack_url: str = typer.Argument(..., help="A Substack URL whose /recommendations to scrape"),
