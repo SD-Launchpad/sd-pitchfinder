@@ -511,6 +511,17 @@ blockquote {
 .angles-label { font-weight: 600; color: #374151; margin-bottom: 0.4em; }
 .angle { padding: 0.55em 0.75em; background: #fef3c7; border-left: 3px solid #f59e0b; margin: 0.3em 0; border-radius: 4px; }
 .angle .ref { display: block; color: #6b7280; font-size: 0.82em; margin-top: 0.3em; }
+.why { background: #ecfdf5; border-left: 3px solid #10b981; padding: 0.55em 0.85em; margin: 0.6em 0 0.8em 0; border-radius: 4px; }
+.why-label { font-weight: 600; color: #065f46; margin-bottom: 0.3em; }
+.dd { background: #faf5ff; border: 1px solid #c084fc; padding: 0.7em 0.9em; margin: 0.9em 0; border-radius: 6px; }
+.dd-label { font-weight: 600; color: #6b21a8; margin-bottom: 0.5em; font-size: 0.95em; }
+.dd-row { margin: 0.4em 0; font-size: 0.92em; }
+.dd-row strong { color: #4c1d95; }
+.dd .quote { margin: 0.4em 0; padding: 0.4em 0.6em; background: #fff; border-left: 2px solid #a78bfa; font-style: italic; color: #4b5563; }
+.dd .quote .src { display: block; font-style: normal; font-size: 0.82em; color: #6b7280; margin-top: 0.3em; }
+.contact-block { background: #fef9c3; border: 1px solid #fde68a; padding: 0.6em 0.85em; margin: 0.7em 0; border-radius: 6px; }
+.contact-block .label { font-weight: 600; color: #854d0e; margin-bottom: 0.3em; }
+.contact-block .row { margin: 0.2em 0; font-size: 0.9em; }
 @media (prefers-color-scheme: dark) {
   body { background: #0f172a; color: #e5e7eb; }
   blockquote { background: #1e293b; border-left-color: #60a5fa; }
@@ -570,14 +581,26 @@ blockquote {
         if c.get("url"):
             meta_bits.append(f"Channel: {link(c['url'])}")
         meta_bits.append(f"Influence: {c['influence_score']}")
-        if c.get("contact_email"):
-            meta_bits.append(f"Email: {link('mailto:' + c['contact_email'], c['contact_email'])}")
-        elif c.get("contact_other"):
-            meta_bits.append(f"Contact: {link(c['contact_other'])}")
         parts.append(f'<div class="meta-row">{" · ".join(meta_bits)}</div>')
 
+        # WHY WE PICKED THEM — most important block, surfaced first
+        parts.append('<div class="why">')
+        parts.append('<div class="why-label">Why we picked them</div>')
         if c.get("top_items"):
-            parts.append("<div><strong>Recent relevant content:</strong></div>")
+            top = c["top_items"][0]
+            parts.append(
+                f'<div>Highest-relevance match (score {top["score"]}): '
+                f'{link(top.get("url"), top.get("title") or "(untitled)")}</div>'
+            )
+            if top.get("reason"):
+                parts.append(f'<div style="margin-top:0.4em; color:#065f46;">→ {esc(top["reason"])}</div>')
+        else:
+            parts.append("<div>(no matching items)</div>")
+        parts.append("</div>")
+
+        # All matching items list
+        if c.get("top_items"):
+            parts.append("<div><strong>Their recent work that matches the launch:</strong></div>")
             for it in c["top_items"]:
                 title = it.get("title") or "(untitled)"
                 ct = it.get("content_type", "")
@@ -594,9 +617,63 @@ blockquote {
                     parts.append(f'<div class="reason">{esc(it["reason"])}</div>')
                 parts.append("</div>")
 
+        # DEEP-DIVE enrichment (only if present)
+        dd = c.get("deep_dive")
+        if dd and not dd.get("error"):
+            parts.append('<div class="dd">')
+            parts.append('<div class="dd-label">Verified context (MiroThinker deep research)</div>')
+            if dd.get("verified_active") is False:
+                parts.append('<div class="dd-row"><strong>⚠ Status:</strong> No posts found in last 6 months — may be inactive.</div>')
+            if dd.get("recent_themes"):
+                themes = ", ".join(esc(t) for t in dd["recent_themes"])
+                parts.append(f'<div class="dd-row"><strong>Recent themes:</strong> {themes}</div>')
+            if dd.get("current_stance"):
+                parts.append(f'<div class="dd-row"><strong>Current stance:</strong> {esc(dd["current_stance"])}</div>')
+            if dd.get("sharp_quotes"):
+                parts.append('<div class="dd-row"><strong>Sharp quotes (verified):</strong></div>')
+                for q in dd["sharp_quotes"]:
+                    src_link = link(q.get("source"), q.get("source"))
+                    date_str = f" — {esc(q['date'])}" if q.get("date") else ""
+                    parts.append(
+                        f'<div class="quote">"{esc(q.get("quote", ""))}"'
+                        f'<span class="src">{src_link}{date_str}</span></div>'
+                    )
+            if dd.get("pitch_hook"):
+                parts.append(f'<div class="dd-row"><strong>Pitch hook:</strong> <em>"{esc(dd["pitch_hook"])}"</em></div>')
+            parts.append("</div>")
+        elif dd and dd.get("error"):
+            parts.append(f'<div class="dd-row" style="color:#b91c1c;">⚠ Deep dive failed: {esc(dd["error"])}</div>')
+
+        # CONTACT block — pulled from deep-dive contact + creator table fallback
+        contact_email = (dd or {}).get("contact", {}).get("email") if dd else None
+        contact_email = contact_email or c.get("contact_email")
+        dd_contact = (dd or {}).get("contact", {}) if dd else {}
+        any_contact = contact_email or dd_contact.get("twitter") or dd_contact.get("linkedin") or dd_contact.get("contact_form") or dd_contact.get("preferred_channel") or c.get("contact_other")
+        if any_contact:
+            parts.append('<div class="contact-block">')
+            parts.append('<div class="label">How to reach them</div>')
+            if contact_email:
+                parts.append(f'<div class="row">📧 Email: {link("mailto:" + contact_email, contact_email)}</div>')
+            if dd_contact.get("twitter"):
+                tw = dd_contact["twitter"].lstrip("@")
+                parts.append(f'<div class="row">🐦 Twitter/X: {link(f"https://twitter.com/{tw}", "@" + tw)}</div>')
+            if dd_contact.get("linkedin"):
+                parts.append(f'<div class="row">💼 LinkedIn: {link(dd_contact["linkedin"])}</div>')
+            if dd_contact.get("contact_form"):
+                parts.append(f'<div class="row">📨 Contact form: {link(dd_contact["contact_form"])}</div>')
+            if dd_contact.get("preferred_channel"):
+                parts.append(f'<div class="row"><strong>Best channel:</strong> {esc(dd_contact["preferred_channel"])}</div>')
+            if dd_contact.get("notes"):
+                parts.append(f'<div class="row" style="color:#92400e;">{esc(dd_contact["notes"])}</div>')
+            if not dd and c.get("contact_other"):
+                parts.append(f'<div class="row">{link(c["contact_other"])}</div>')
+            parts.append("</div>")
+        else:
+            parts.append('<div class="contact-block" style="background:#fef2f2; border-color:#fecaca; color:#991b1b;">No public contact info on record. Run <code>pitchfinder deep-dive</code> to have MiroThinker hunt for one.</div>')
+
         if c.get("angles"):
             parts.append('<div class="angles">')
-            parts.append('<div class="angles-label">Pitch angles:</div>')
+            parts.append('<div class="angles-label">Pitch angles</div>')
             for a in c["angles"]:
                 parts.append('<div class="angle">')
                 parts.append(esc(a.get("angle", "")))
@@ -627,7 +704,7 @@ def show_search(db: str, search_id: int, min_score: int, output: Optional[Path])
     description = row["description"]
 
     creators = _rank_creators(db, search_id, min_score, max_creators=999)
-    # Attach previously generated angles
+    # Attach previously generated angles + deep-dive payloads
     conn = get_conn(db)
     try:
         for c in creators:
@@ -636,10 +713,135 @@ def show_search(db: str, search_id: int, min_score: int, output: Optional[Path])
                 (search_id, c["creator_id"]),
             ).fetchone()
             c["angles"] = json.loads(ar["angles_json"]) if ar and ar["angles_json"] else []
+
+            dr = conn.execute(
+                "SELECT payload_json FROM deep_dives WHERE search_id = ? AND creator_id = ?",
+                (search_id, c["creator_id"]),
+            ).fetchone()
+            c["deep_dive"] = json.loads(dr["payload_json"]) if dr and dr["payload_json"] else None
     finally:
         conn.close()
 
     _render_results(description, creators, search_id, output)
+
+
+# ---------- deep-dive (MiroThinker enrichment) ----------
+
+
+def run_deep_dive(
+    db: str,
+    search_id: int,
+    top_n: int = 10,
+    min_score: int = 55,
+    output: Optional[Path] = None,
+    only_creator_ids: Optional[list[int]] = None,
+    skip_creator_ids: Optional[list[int]] = None,
+    model: Optional[str] = None,
+) -> None:
+    """Run a deep-research pass on top-N creators of a given search.
+
+    Uses MiroThinker (web search + verification) by default; pass `model`
+    e.g. 'anthropic/claude-sonnet-4.6' to do a cheaper best-effort run
+    without live search.
+    """
+    is_mirothinker = (model or os.getenv("MIROMIND_DEEPRESEARCH_MODEL", "mirothinker-1-7-deepresearch")).startswith("mirothinker")
+    if is_mirothinker and not os.getenv("MIROMIND_API_KEY"):
+        raise RuntimeError("MIROMIND_API_KEY is not set. Put it in .env or export it.")
+    if not is_mirothinker and not os.getenv("OPENROUTER_API_KEY"):
+        raise RuntimeError("OPENROUTER_API_KEY is not set (needed for non-MiroThinker models).")
+
+    from pitchfinder.research import deep_dive_creator, deep_research_model
+
+    conn = get_conn(db)
+    try:
+        srow = conn.execute(
+            "SELECT description FROM searches WHERE id = ?", (search_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not srow:
+        console.print(f"[red]Search {search_id} not found.[/red]")
+        return
+    description = srow["description"]
+
+    candidates = _rank_creators(db, search_id, min_score, max_creators=top_n)
+    if only_creator_ids:
+        candidates = [c for c in candidates if c["creator_id"] in only_creator_ids]
+    if skip_creator_ids:
+        candidates = [c for c in candidates if c["creator_id"] not in skip_creator_ids]
+    if not candidates:
+        console.print("[yellow]No creators to deep-dive.[/yellow]")
+        return
+
+    used_model = model or deep_research_model()
+    console.print(f"  using model: [cyan]{used_model}[/cyan]")
+
+    console.print(
+        f"[bold]Deep-dive[/bold] on {len(candidates)} creators (search_id={search_id})..."
+    )
+    for i, c in enumerate(candidates, 1):
+        t0 = datetime.utcnow()
+        console.print(f"  [{i}/{len(candidates)}] {c['name']} — researching...")
+        payload = deep_dive_creator(c["name"], c.get("url") or "", description, model=model)
+        elapsed = (datetime.utcnow() - t0).total_seconds()
+        ok = not payload.get("error") and payload.get("recent_themes")
+        status = "[green]ok[/green]" if ok else "[red]error/empty[/red]"
+        if payload.get("error"):
+            console.print(f"      {status} {elapsed:.1f}s — {payload['error']}")
+        else:
+            n_quotes = len(payload.get("sharp_quotes") or [])
+            n_themes = len(payload.get("recent_themes") or [])
+            console.print(f"      {status} {elapsed:.1f}s — {n_themes} themes, {n_quotes} quotes")
+
+        conn = get_conn(db)
+        try:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO deep_dives
+                  (search_id, creator_id, model, payload_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    search_id,
+                    c["creator_id"],
+                    used_model,
+                    json.dumps(payload),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Optional: backfill creators.contact_email / contact_other when found
+        c_contact = (payload.get("contact") or {})
+        if c_contact.get("email") and "@" in c_contact["email"]:
+            conn = get_conn(db)
+            try:
+                conn.execute(
+                    "UPDATE creators SET contact_email = COALESCE(contact_email, ?) WHERE id = ?",
+                    (c_contact["email"], c["creator_id"]),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        elif c_contact.get("twitter") or c_contact.get("linkedin") or c_contact.get("contact_form"):
+            other_bits = [
+                c_contact.get("twitter"),
+                c_contact.get("linkedin"),
+                c_contact.get("contact_form"),
+            ]
+            other = " | ".join([x for x in other_bits if x])
+            conn = get_conn(db)
+            try:
+                conn.execute(
+                    "UPDATE creators SET contact_other = COALESCE(contact_other, ?) WHERE id = ?",
+                    (other, c["creator_id"]),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    console.print(f"\n[green]Deep-dive complete.[/green] Run `pitchfinder show {search_id} --output reports/...html` to see the enriched report.")
 
 
 # ---------- outreach ----------

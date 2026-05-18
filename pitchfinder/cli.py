@@ -107,6 +107,45 @@ def status(
     console.print(f"[green]Updated[/green] creator={creator_id} campaign={campaign} -> {new_status}")
 
 
+@app.command("deep-dive")
+def deep_dive(
+    search_id: int = typer.Argument(..., help="A previous search id"),
+    top: int = typer.Option(10, "--top", help="Number of top-ranked creators to enrich"),
+    min_score: int = typer.Option(55, "--min-score"),
+    only: Optional[str] = typer.Option(
+        None, "--only", help="Comma-separated creator_ids to restrict to (overrides --top)"
+    ),
+    skip: Optional[str] = typer.Option(
+        None, "--skip", help="Comma-separated creator_ids to exclude (e.g. already deep-dived)"
+    ),
+    model: Optional[str] = typer.Option(
+        None,
+        "--model",
+        help="Override deep-research model. Default = MIROMIND_DEEPRESEARCH_MODEL "
+        "(mirothinker-1-7-deepresearch). Use e.g. 'anthropic/claude-sonnet-4.6' for cheaper best-effort.",
+    ),
+    db: str = typer.Option(DEFAULT_DB),
+) -> None:
+    """Enrich top-N ranked creators with web-search + verification.
+
+    Default: MiroThinker (live web search). Pass --model anthropic/claude-sonnet-4.6
+    to do a cheaper best-effort pass without live search.
+    """
+    from pitchfinder.pipeline import run_deep_dive
+
+    only_ids = [int(x) for x in only.split(",")] if only else None
+    skip_ids = [int(x) for x in skip.split(",")] if skip else None
+    run_deep_dive(
+        db=db,
+        search_id=search_id,
+        top_n=top,
+        min_score=min_score,
+        only_creator_ids=only_ids,
+        skip_creator_ids=skip_ids,
+        model=model,
+    )
+
+
 @app.command("discover-podcasts")
 def discover_podcasts(
     keyword: str = typer.Argument(...),

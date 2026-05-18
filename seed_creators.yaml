@@ -214,7 +214,7 @@ creators:
   - name: No Priors
     platform: podcast
     handle: nopriors
-    url: https://www.no-priors.com
+    url: https://www.nopriors.com
     feed_url: https://feeds.megaphone.fm/nopriors
     topics: [ai-startups, founders, conviction]
     influence_score: 85
@@ -238,7 +238,7 @@ creators:
   - name: Machine Learning Street Talk (podcast)
     platform: podcast
     handle: mlst-pod
-    url: https://www.machinelearningstreettalk.com
+    url: https://www.mlst.ai
     feed_url: https://anchor.fm/s/1e4a0eac/podcast/rss
     topics: [research-debates, philosophy-of-ai, deep-technical]
     influence_score: 80

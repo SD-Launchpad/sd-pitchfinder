@@ -70,6 +70,18 @@ CREATE TABLE IF NOT EXISTS outreach (
   UNIQUE(creator_id, campaign)
 );
 
+CREATE TABLE IF NOT EXISTS deep_dives (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  search_id INTEGER NOT NULL,
+  creator_id INTEGER NOT NULL,
+  model TEXT,
+  payload_json TEXT NOT NULL,
+  ran_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(search_id, creator_id),
+  FOREIGN KEY (search_id) REFERENCES searches(id),
+  FOREIGN KEY (creator_id) REFERENCES creators(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_items_creator ON items(creator_id);
 CREATE INDEX IF NOT EXISTS idx_items_published ON items(published_at);
 CREATE INDEX IF NOT EXISTS idx_relevance_search ON relevance_scores(search_id);

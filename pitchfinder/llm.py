@@ -19,12 +19,19 @@ DEFAULT_PITCH_MODEL = "deepseek/deepseek-chat-v3.1"
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
 
 
-def _client() -> OpenAI:
+def _client_for_model(model: str) -> OpenAI:
+    """Route to MiroMind for mirothinker-* model ids, OpenRouter otherwise."""
+    if model.startswith("mirothinker"):
+        api_key = os.getenv("MIROMIND_API_KEY")
+        if not api_key:
+            raise RuntimeError("MIROMIND_API_KEY is not set")
+        base_url = os.getenv("MIROMIND_BASE_URL", "https://api.miromind.ai/v1")
+        return OpenAI(api_key=api_key, base_url=base_url)
+
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not set")
     base_url = os.getenv("OPENROUTER_BASE_URL", DEFAULT_BASE_URL)
-    # OpenRouter recommends sending HTTP-Referer and X-Title headers
     default_headers = {}
     referer = os.getenv("OPENROUTER_HTTP_REFERER")
     if referer:
@@ -48,14 +55,37 @@ def _strip_fences(text: str) -> str:
 
 
 def _call_json(model: str, prompt: str, max_tokens: int = 1024) -> Any:
-    """Make a single LLM call expecting JSON output."""
-    client = _client()
-    resp = client.chat.completions.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    text = resp.choices[0].message.content or ""
+    """Make a single LLM call expecting JSON output.
+
+    MiroThinker models default to SSE streaming and only emit content in
+    delta chunks — we accumulate them. Everything else goes non-stream.
+    """
+    client = _client_for_model(model)
+    use_stream = model.startswith("mirothinker")
+
+    if use_stream:
+        stream = client.chat.completions.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+            stream=True,
+        )
+        buf: list[str] = []
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta and getattr(delta, "content", None):
+                buf.append(delta.content)
+        text = "".join(buf)
+    else:
+        resp = client.chat.completions.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = resp.choices[0].message.content or ""
+
     cleaned = _strip_fences(text)
     try:
         return json.loads(cleaned)
