@@ -514,6 +514,8 @@ blockquote {
 .why { background: #ecfdf5; border-left: 3px solid #10b981; padding: 0.55em 0.85em; margin: 0.6em 0 0.8em 0; border-radius: 4px; }
 .why-label { font-weight: 600; color: #065f46; margin-bottom: 0.3em; }
 .dd { background: #faf5ff; border: 1px solid #c084fc; padding: 0.7em 0.9em; margin: 0.9em 0; border-radius: 6px; }
+.dd.dd-sonnet { background: #f1f5f9; border-color: #94a3b8; }
+.dd.dd-sonnet .dd-label { color: #475569; }
 .dd-label { font-weight: 600; color: #6b21a8; margin-bottom: 0.5em; font-size: 0.95em; }
 .dd-row { margin: 0.4em 0; font-size: 0.92em; }
 .dd-row strong { color: #4c1d95; }
@@ -620,8 +622,15 @@ blockquote {
         # DEEP-DIVE enrichment (only if present)
         dd = c.get("deep_dive")
         if dd and not dd.get("error"):
-            parts.append('<div class="dd">')
-            parts.append('<div class="dd-label">Verified context (MiroThinker deep research)</div>')
+            source_model = dd.get("_source_model") or c.get("deep_dive_model") or ""
+            if source_model.startswith("mirothinker"):
+                dd_class = "dd"
+                dd_label = "✓ Verified context (MiroThinker • live web search)"
+            else:
+                dd_class = "dd dd-sonnet"
+                dd_label = f"○ Context ({esc(source_model or 'LLM')} • from training data, no live search)"
+            parts.append(f'<div class="{dd_class}">')
+            parts.append(f'<div class="dd-label">{dd_label}</div>')
             if dd.get("verified_active") is False:
                 parts.append('<div class="dd-row"><strong>⚠ Status:</strong> No posts found in last 6 months — may be inactive.</div>')
             if dd.get("recent_themes"):
@@ -715,10 +724,16 @@ def show_search(db: str, search_id: int, min_score: int, output: Optional[Path])
             c["angles"] = json.loads(ar["angles_json"]) if ar and ar["angles_json"] else []
 
             dr = conn.execute(
-                "SELECT payload_json FROM deep_dives WHERE search_id = ? AND creator_id = ?",
+                "SELECT payload_json, model FROM deep_dives WHERE search_id = ? AND creator_id = ?",
                 (search_id, c["creator_id"]),
             ).fetchone()
-            c["deep_dive"] = json.loads(dr["payload_json"]) if dr and dr["payload_json"] else None
+            if dr and dr["payload_json"]:
+                payload = json.loads(dr["payload_json"])
+                if not payload.get("_source_model"):
+                    payload["_source_model"] = dr["model"] or ""
+                c["deep_dive"] = payload
+            else:
+                c["deep_dive"] = None
     finally:
         conn.close()
 
@@ -764,7 +779,11 @@ def run_deep_dive(
         return
     description = srow["description"]
 
-    candidates = _rank_creators(db, search_id, min_score, max_creators=top_n)
+    # When --only is given, the user is naming creators explicitly; don't
+    # also clip them to the top_n window (would silently drop lower-ranked
+    # IDs even though the user asked for them by id).
+    effective_top = 9999 if only_creator_ids else top_n
+    candidates = _rank_creators(db, search_id, min_score, max_creators=effective_top)
     if only_creator_ids:
         candidates = [c for c in candidates if c["creator_id"] in only_creator_ids]
     if skip_creator_ids:
