@@ -93,6 +93,22 @@ def show(
 
 
 @app.command()
+def campaign(
+    config: Path = typer.Argument(..., exists=True, readable=True, help="brand.yaml"),
+    budget: Optional[int] = typer.Option(None, "--budget", help="Hard cap on MiroThinker deep-dives"),
+    skip_discovery: bool = typer.Option(False, "--skip-discovery", help="Reuse existing library"),
+    lookback_days: int = typer.Option(90, "--lookback-days"),
+    db: str = typer.Option(DEFAULT_DB),
+) -> None:
+    """Run the whole funnel for one brand: discover → refresh → search → tier →
+    deep-dive Tier-A top-N → HTML + CSV + Markdown. Parameterized by brand.yaml."""
+    from pitchfinder.pipeline import run_campaign
+
+    run_campaign(db, str(config), budget=budget, skip_discovery=skip_discovery,
+                 lookback_days=lookback_days)
+
+
+@app.command()
 def classify(
     search_id: int = typer.Argument(..., help="A previous search id"),
     brand: Optional[Path] = typer.Option(
