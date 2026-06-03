@@ -223,3 +223,63 @@ MIROMIND_DEEPRESEARCH_MODEL=mirothinker-1-7-deepresearch
 - **httpx 默认不带 brotli 解码器** — Accept-Encoding 不能写 `br`
 - **HTTP 200 ≠ 内容真实** — `nopriors.com` 是 GoDaddy 待售页，所以加了 `pitchfinder lint`
 - **podcast feed 的 `<id>` 字段有时是 UUID 不是 URL** — fetcher 已经只接 http(s) URL
+
+---
+
+## 10. v2 — 通用 campaign agent（Brave/Querit 漏斗 + A/B 分层 + CSV）
+
+v1 是「手动跑各命令」；v2 把它做成**任意品牌可复用**的成本漏斗，一条命令端到端。
+
+### 成本漏斗
+```
+Brave 主 + Querit 补（廉价广筛全网候选） → resolve feed → load → refresh
+  → DeepSeek 打分（廉价排序，已惩罚内容农场）
+  → 强模型自动分层 A / B / drop（+ 人工 review）
+  → MiroThinker 只对 Tier-A top-N 深验（贵的留最后；召回不足才兜底）
+  → 同时输出 HTML + CSV + Markdown
+```
+
+### 一条命令跑完
+每个品牌一个 `brands/<brand>.yaml`（见 `brands/apodex.yaml`：定位 / themes / 竞品 / 红线 / 平台 / 预算）：
+```bash
+pitchfinder campaign brands/apodex.yaml            # 全流程
+pitchfinder campaign brands/apodex.yaml --budget 5 # 硬限 MiroThinker 深验 5 个
+pitchfinder campaign brands/apodex.yaml --skip-discovery   # 复用现有库
+```
+产出：`reports/<brand>-<date>.{html,csv,md}`。
+
+### 新命令（也可单独用）
+| 命令 | 作用 |
+|---|---|
+| `discover-web "<themes>" [--brand b.yaml]` | Brave/Querit 全网捞 creator，解析 feed，产候选 yaml。无 key 的 provider 自动跳过 |
+| `classify <search_id> [--brand b.yaml]` | 强模型自动分 A/B/drop（写 `creator_tiers`），不覆盖人工 override |
+| `tier <search_id> <creator_id> <A\|B\|drop>` | 人工调档（`source=manual`，re-classify 不覆盖） |
+| `search/show --output x.csv` | CSV 导出（扁平列，直接进 Google Sheet） |
+
+分层后 `show` 只渲染 A+B（drop 不出），A 排前、B 在后，卡片带 Tier 徽标。
+
+### A/B 定义
+- **A**：高相关 + high-confidence，强烈推荐建联
+- **B**：中度相关，值得建联（recall 优先，拿不准归 B 不丢）
+- **drop**：内容农场 / SEO 聚合 / 跑题
+
+### 成本杠杆
+- 判断类（分层）用强模型（Sonnet，配置 `tiering.model`）——便宜模型会把内容农场误判为 A。
+- 发现兜底用 `mirothinker-…-mini`（`discovery.mirothinker_model`），且只在 web 召回 < `mirothinker_fallback_min` 时触发。
+- 深验只跑 Tier-A `deepdive.top_n`，受 `budget.max_deepdive` 硬上限。
+
+### Env（`.env`）
+```bash
+BRAVE_API_KEY=          # 主发现源（免费 2000/月）
+QUERIT_API_TOKEN=       # 补充发现源
+# OpenRouter / MiroMind 同 v1
+```
+
+### 测试
+```bash
+uv pip install -e ".[dev]"
+pytest          # tests/ 覆盖 config / CSV / feed 解析 / URL 归一 / schema 迁移
+```
+
+### 未做（future）
+- 跨平台同人去重（swyx newsletter+podcast、MLST pod+yt 合一卡）。
