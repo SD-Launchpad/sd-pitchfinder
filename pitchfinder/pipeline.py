@@ -762,19 +762,19 @@ blockquote {
 # ---------- show ----------
 
 
-def show_search(db: str, search_id: int, min_score: int, output: Optional[Path]) -> None:
+def _build_report(db: str, search_id: int, min_score: int) -> Optional[tuple[str, list[dict]]]:
+    """Load ranked creators for a search with angles + deep-dive + tier attached
+    and tier-ordered (drops removed). Returns (description, creators) or None."""
     conn = get_conn(db)
     try:
         row = conn.execute("SELECT description FROM searches WHERE id = ?", (search_id,)).fetchone()
     finally:
         conn.close()
     if not row:
-        console.print(f"[red]Search {search_id} not found.[/red]")
-        return
+        return None
     description = row["description"]
 
     creators = _rank_creators(db, search_id, min_score, max_creators=999)
-    # Attach previously generated angles + deep-dive payloads
     conn = get_conn(db)
     try:
         for c in creators:
@@ -799,6 +799,15 @@ def show_search(db: str, search_id: int, min_score: int, output: Optional[Path])
         conn.close()
 
     creators = _attach_and_order_tiers(db, search_id, creators)
+    return description, creators
+
+
+def show_search(db: str, search_id: int, min_score: int, output: Optional[Path]) -> None:
+    built = _build_report(db, search_id, min_score)
+    if built is None:
+        console.print(f"[red]Search {search_id} not found.[/red]")
+        return
+    description, creators = built
     _render_results(description, creators, search_id, output)
 
 
@@ -1067,3 +1076,145 @@ def set_outreach_status(
         conn.commit()
     finally:
         conn.close()
+
+
+# ---------- campaign orchestrator (the general-agent funnel) ----------
+
+
+def _ensure_angles(db: str, search_id: int, description: str, creators: list[dict]) -> int:
+    """Generate + persist pitch angles for any creator that lacks them. Returns
+    the number generated. Keeps angle generation scoped to the kept (A+B) set."""
+    from pitchfinder.llm import generate_pitch_angles
+
+    n = 0
+    for c in creators:
+        if c.get("angles"):
+            continue
+        try:
+            angles = generate_pitch_angles(description, c["name"], c.get("top_items", []))
+        except Exception as exc:
+            logger.warning("ensure_angles failed creator=%s: %s", c["creator_id"], exc)
+            angles = []
+        c["angles"] = angles
+        conn = get_conn(db)
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO pitch_angles (search_id, creator_id, angles_json) VALUES (?, ?, ?)",
+                (search_id, c["creator_id"], json.dumps(angles)),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        n += 1
+    return n
+
+
+def run_campaign(
+    db: str,
+    config_path: str,
+    budget: Optional[int] = None,
+    skip_discovery: bool = False,
+    lookback_days: int = 90,
+    search_min_score: int = 50,
+    tier_min_score: int = 40,
+) -> int:
+    """End-to-end funnel for one brand. Returns the search_id.
+
+    discover-web (+ MiroThinker fallback) → refresh → search → auto-tier →
+    backfill angles for A+B → deep-dive Tier-A top-N (budget-capped) →
+    render html + csv + md to reports/<brand>-<UTCdate>.{html,csv,md}.
+    """
+    from pitchfinder.config import load_brand_config
+    from pitchfinder.discovery import discover_relevant_creators, write_candidates_yaml
+
+    cfg = load_brand_config(config_path)
+    init_schema(db)
+    desc = cfg.launch_description()
+    cap = budget if budget is not None else cfg.budget.max_deepdive
+    reports_dir = Path("reports")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Discovery — cheap web sweep, MiroThinker only as fallback.
+    if not skip_discovery:
+        from pitchfinder.web_discovery import discover_web_creators
+
+        conn = get_conn(db)
+        try:
+            existing = {r["name"] for r in conn.execute("SELECT name FROM creators").fetchall()}
+        finally:
+            conn.close()
+        console.print("[bold]Discovery[/bold] — web sweep (Brave/Querit) ...")
+        cands = discover_web_creators(
+            cfg.themes, cfg.platforms, existing,
+            cfg.discovery.providers, cfg.discovery.per_platform_queries,
+        )
+        if cands:
+            p = reports_dir / f"_campaign_{cfg.brand}_web.yaml"
+            write_candidates_yaml(cands, p)
+            load_seeds(p, db)
+        console.print(f"   web candidates: {len(cands)}")
+        if len(cands) < cfg.discovery.mirothinker_fallback_min and os.getenv("MIROMIND_API_KEY"):
+            console.print("   web recall low → MiroThinker fallback discovery ...")
+            try:
+                mt = discover_relevant_creators(
+                    desc, list(existing), limit=30, model=cfg.discovery.mirothinker_model
+                )
+                if mt:
+                    p2 = reports_dir / f"_campaign_{cfg.brand}_mirothinker.yaml"
+                    write_candidates_yaml(mt, p2)
+                    load_seeds(p2, db)
+                console.print(f"   MiroThinker candidates: {len(mt)}")
+            except Exception as exc:
+                console.print(f"   [yellow]MiroThinker fallback skipped: {exc}[/yellow]")
+
+    # 2. Refresh feeds.
+    console.print("[bold]Refresh[/bold] — pulling feeds ...")
+    refresh_feeds(db, lookback_days=lookback_days)
+
+    # 3. Search (scores items, writes search row, angles for top-by-score).
+    search_id = run_search(
+        db, description=desc, min_score=search_min_score,
+        max_creators=40, lookback_days=lookback_days, output=None,
+    )
+    conn = get_conn(db)
+    try:
+        conn.execute("UPDATE searches SET brand = ? WHERE id = ?", (cfg.brand, search_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+    # 4. Auto-tier A/B/drop (strong model from config).
+    summary = desc + ((" Do not fabricate: " + "; ".join(cfg.do_not) + ".") if cfg.do_not else "")
+    console.print("[bold]Tiering[/bold] — A/B/drop ...")
+    counts = run_classify_tiers(db, search_id, summary, min_score=tier_min_score, model=cfg.tiering.model)
+    console.print(f"   A={counts.get('A',0)} B={counts.get('B',0)} drop={counts.get('drop',0)}")
+
+    # 5. Backfill pitch angles for the kept (A+B) set.
+    built = _build_report(db, search_id, tier_min_score)
+    description, creators = built if built else (desc, [])
+    made = _ensure_angles(db, search_id, description, creators)
+    if made:
+        console.print(f"   backfilled {made} pitch-angle set(s)")
+
+    # 6. Deep-dive Tier-A top-N (budget-capped).
+    tier_a = [c for c in creators if c.get("tier") == cfg.deepdive.tier]
+    tier_a.sort(key=lambda c: c.get("top_score", 0), reverse=True)
+    dd_ids = [c["creator_id"] for c in tier_a[: min(cfg.deepdive.top_n, cap)]]
+    if dd_ids and os.getenv("MIROMIND_API_KEY"):
+        console.print(f"[bold]Deep-dive[/bold] — MiroThinker on {len(dd_ids)} Tier-{cfg.deepdive.tier} creators ...")
+        run_deep_dive(
+            db, search_id, min_score=tier_min_score,
+            only_creator_ids=dd_ids, model=cfg.deepdive.model,
+        )
+    elif dd_ids:
+        console.print("[yellow]MIROMIND_API_KEY not set — skipping deep-dive.[/yellow]")
+
+    # 7. Render all three formats (rebuild to pick up deep-dive + angles).
+    built = _build_report(db, search_id, tier_min_score)
+    if built:
+        description, creators = built
+        stem = reports_dir / f"{cfg.brand}-{datetime.utcnow().strftime('%Y%m%d')}"
+        for ext in (".html", ".csv", ".md"):
+            _render_results(description, creators, search_id, stem.with_suffix(ext))
+    console.print(f"[green]Campaign done[/green] (search_id={search_id})")
+    return search_id
