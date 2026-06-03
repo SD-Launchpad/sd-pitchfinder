@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import html
+import io
 import json
 import logging
 import os
@@ -392,6 +394,9 @@ def _render_results(
         if suffix in (".html", ".htm"):
             output.write_text(_render_html(description, creators, search_id))
             label = "HTML report"
+        elif suffix == ".csv":
+            output.write_text(_render_csv(description, creators, search_id))
+            label = "CSV export"
         else:
             output.write_text(_render_markdown(description, creators, search_id))
             label = "Markdown report"
@@ -435,6 +440,55 @@ def _render_markdown(description: str, creators: list[dict], search_id: int) -> 
                     lines.append(f"  - _refs: {ref}_")
             lines.append("")
     return "\n".join(lines)
+
+
+# Flat, Google-Sheet-friendly columns (one row per creator). No nested JSON so
+# the file pastes straight into a spreadsheet.
+_CSV_COLUMNS = [
+    "rank", "tier", "name", "platform", "url", "score", "influence",
+    "email", "twitter", "linkedin", "preferred_channel",
+    "verified_active", "outreach_status",
+    "top_match_title", "top_match_url",
+    "angle_1", "angle_2", "angle_3",
+    "recent_themes", "tier_rationale",
+]
+
+
+def _render_csv(description: str, creators: list[dict], search_id: int) -> str:
+    """Render creators as a flat CSV. Pulls contact/quotes from deep_dive when
+    present, else falls back to the creator's stored contact fields."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=_CSV_COLUMNS, extrasaction="ignore")
+    writer.writeheader()
+    for i, c in enumerate(creators, 1):
+        dd = c.get("deep_dive") or {}
+        contact = dd.get("contact") or {}
+        angles = [a.get("angle", "") for a in (c.get("angles") or [])]
+        top = (c.get("top_items") or [{}])[0]
+        va = dd.get("verified_active")
+        writer.writerow({
+            "rank": i,
+            "tier": c.get("tier", ""),
+            "name": c["name"],
+            "platform": c["platform"],
+            "url": c.get("url") or "",
+            "score": c.get("top_score", ""),
+            "influence": c.get("influence_score", ""),
+            "email": contact.get("email") or c.get("contact_email") or "",
+            "twitter": contact.get("twitter") or "",
+            "linkedin": contact.get("linkedin") or "",
+            "preferred_channel": contact.get("preferred_channel") or c.get("contact_other") or "",
+            "verified_active": "" if va is None else ("yes" if va else "no"),
+            "outreach_status": c.get("outreach_status", ""),
+            "top_match_title": top.get("title", ""),
+            "top_match_url": top.get("url", ""),
+            "angle_1": angles[0] if len(angles) > 0 else "",
+            "angle_2": angles[1] if len(angles) > 1 else "",
+            "angle_3": angles[2] if len(angles) > 2 else "",
+            "recent_themes": "; ".join(dd.get("recent_themes") or []),
+            "tier_rationale": c.get("tier_rationale", ""),
+        })
+    return buf.getvalue()
 
 
 def _render_html(description: str, creators: list[dict], search_id: int) -> str:

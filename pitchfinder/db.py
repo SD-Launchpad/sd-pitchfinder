@@ -82,6 +82,19 @@ CREATE TABLE IF NOT EXISTS deep_dives (
   FOREIGN KEY (creator_id) REFERENCES creators(id)
 );
 
+CREATE TABLE IF NOT EXISTS creator_tiers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  search_id INTEGER NOT NULL,
+  creator_id INTEGER NOT NULL,
+  tier TEXT NOT NULL,                      -- 'A' | 'B' | 'drop'
+  rationale TEXT,
+  source TEXT DEFAULT 'auto',              -- 'auto' (LLM) | 'manual' (override)
+  set_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(search_id, creator_id),
+  FOREIGN KEY (search_id) REFERENCES searches(id),
+  FOREIGN KEY (creator_id) REFERENCES creators(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_items_creator ON items(creator_id);
 CREATE INDEX IF NOT EXISTS idx_items_published ON items(published_at);
 CREATE INDEX IF NOT EXISTS idx_relevance_search ON relevance_scores(search_id);
@@ -95,10 +108,26 @@ def get_conn(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+# Idempotent column additions for DBs created before a column existed.
+# SQLite has no "ADD COLUMN IF NOT EXISTS", so we guard on PRAGMA table_info.
+_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("searches", "brand", "ALTER TABLE searches ADD COLUMN brand TEXT"),
+]
+
+
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    for table, column, ddl in _MIGRATIONS:
+        cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(ddl)
+    conn.commit()
+
+
 def init_schema(db_path: str | Path) -> None:
     conn = get_conn(db_path)
     try:
         conn.executescript(SCHEMA)
+        _apply_migrations(conn)
         conn.commit()
     finally:
         conn.close()
