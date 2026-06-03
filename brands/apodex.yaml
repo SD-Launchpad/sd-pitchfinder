@@ -48,7 +48,7 @@ discovery:
   mirothinker_model: mirothinker-1-7-deepresearch-mini
 
 tiering:
-  model: deepseek/deepseek-chat-v3.1
+  model: anthropic/claude-sonnet-4.6   # judgment task → strong model
   drop_content_farms: true
 
 deepdive:

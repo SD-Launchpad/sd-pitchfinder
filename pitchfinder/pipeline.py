@@ -417,7 +417,8 @@ def _render_markdown(description: str, creators: list[dict], search_id: int) -> 
     lines.append("")
     for i, c in enumerate(creators, 1):
         contact = c.get("contact_email") or c.get("contact_other") or "_(no public contact)_"
-        lines.append(f"### {i}. {c['name']} — score {c['top_score']}")
+        tier_prefix = f"[{c['tier']}] " if c.get("tier") else ""
+        lines.append(f"### {i}. {tier_prefix}{c['name']} — score {c['top_score']}")
         lines.append("")
         lines.append(f"- **Platform**: {c['platform']}")
         lines.append(f"- **URL**: {c.get('url') or '—'}")
@@ -554,6 +555,8 @@ blockquote {
   color: #1e40af; font-weight: 600;
 }
 .badge.platform { background: #e0e7ff; color: #3730a3; }
+.badge.tier-a { background: #dcfce7; color: #166534; }
+.badge.tier-b { background: #fef9c3; color: #854d0e; }
 .creator .meta-row { color: #4b5563; font-size: 0.9em; margin-bottom: 0.8em; }
 .creator .meta-row a { color: #2563eb; text-decoration: none; }
 .creator .meta-row a:hover { text-decoration: underline; }
@@ -626,8 +629,12 @@ blockquote {
     # Per-creator detail
     for i, c in enumerate(creators, 1):
         parts.append('<div class="creator">')
+        tier_badge = (
+            f'<span class="badge tier-{esc(c["tier"]).lower()}">Tier {esc(c["tier"])}</span> '
+            if c.get("tier") else ""
+        )
         parts.append(
-            f'<h3>{i}. {esc(c["name"])} '
+            f'<h3>{i}. {tier_badge}{esc(c["name"])} '
             f'<span class="badge platform">{esc(c["platform"])}</span> '
             f'<span class="badge">score {c["top_score"]}</span>'
             f'</h3>'
@@ -791,7 +798,112 @@ def show_search(db: str, search_id: int, min_score: int, output: Optional[Path])
     finally:
         conn.close()
 
+    creators = _attach_and_order_tiers(db, search_id, creators)
     _render_results(description, creators, search_id, output)
+
+
+# ---------- tiering (A / B / drop) ----------
+
+_TIER_RANK = {"A": 0, "B": 1, "": 2}
+
+
+def _attach_and_order_tiers(db: str, search_id: int, creators: list[dict]) -> list[dict]:
+    """Attach tier + rationale from creator_tiers. If any tiers exist for this
+    search, drop 'drop' creators and order A before B (stable within tier,
+    preserving score order). If none exist yet, return creators unchanged."""
+    conn = get_conn(db)
+    try:
+        rows = {
+            r["creator_id"]: (r["tier"], r["rationale"])
+            for r in conn.execute(
+                "SELECT creator_id, tier, rationale FROM creator_tiers WHERE search_id = ?",
+                (search_id,),
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+    if not rows:
+        return creators
+    kept: list[dict] = []
+    for c in creators:
+        tier, rationale = rows.get(c["creator_id"], ("B", ""))
+        if tier == "drop":
+            continue
+        c["tier"] = tier
+        c["tier_rationale"] = rationale or ""
+        kept.append(c)
+    kept.sort(key=lambda c: _TIER_RANK.get(c.get("tier", ""), 2))
+    return kept
+
+
+def run_classify_tiers(
+    db: str,
+    search_id: int,
+    brand_summary: str,
+    min_score: int = 40,
+    model: str | None = None,
+) -> dict[str, int]:
+    """Auto-classify all ranked creators for a search into A/B/drop and persist
+    to creator_tiers (source='auto', won't overwrite a 'manual' override).
+    Returns a {tier: count} summary."""
+    from pitchfinder.llm import classify_tiers
+
+    creators = _rank_creators(db, search_id, min_score, max_creators=999)
+    payload = [
+        {
+            "creator_id": c["creator_id"],
+            "name": c["name"],
+            "platform": c["platform"],
+            "influence_score": c["influence_score"],
+            "signal": " | ".join(it.get("title", "") for it in c.get("top_items", [])[:3]),
+        }
+        for c in creators
+    ]
+    verdicts = classify_tiers(brand_summary, payload, model=model)
+
+    conn = get_conn(db)
+    counts = {"A": 0, "B": 0, "drop": 0}
+    try:
+        manual = {
+            r["creator_id"]
+            for r in conn.execute(
+                "SELECT creator_id FROM creator_tiers WHERE search_id = ? AND source = 'manual'",
+                (search_id,),
+            ).fetchall()
+        }
+        for cid, v in verdicts.items():
+            if cid in manual:  # never clobber a human override
+                continue
+            conn.execute(
+                """INSERT INTO creator_tiers (search_id, creator_id, tier, rationale, source)
+                   VALUES (?, ?, ?, ?, 'auto')
+                   ON CONFLICT(search_id, creator_id)
+                   DO UPDATE SET tier=excluded.tier, rationale=excluded.rationale,
+                                 source='auto', set_at=CURRENT_TIMESTAMP""",
+                (search_id, cid, v["tier"], v["rationale"]),
+            )
+            counts[v["tier"]] = counts.get(v["tier"], 0) + 1
+        conn.commit()
+    finally:
+        conn.close()
+    return counts
+
+
+def set_tier(db: str, search_id: int, creator_id: int, tier: str, note: str | None = None) -> None:
+    """Manual tier override (source='manual'); survives future auto-classify."""
+    conn = get_conn(db)
+    try:
+        conn.execute(
+            """INSERT INTO creator_tiers (search_id, creator_id, tier, rationale, source)
+               VALUES (?, ?, ?, ?, 'manual')
+               ON CONFLICT(search_id, creator_id)
+               DO UPDATE SET tier=excluded.tier, rationale=excluded.rationale,
+                             source='manual', set_at=CURRENT_TIMESTAMP""",
+            (search_id, creator_id, tier, note or ""),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ---------- deep-dive (MiroThinker enrichment) ----------

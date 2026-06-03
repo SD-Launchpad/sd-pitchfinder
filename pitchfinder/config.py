@@ -26,7 +26,9 @@ class DiscoveryCfg:
 
 @dataclass
 class TieringCfg:
-    model: str = "deepseek/deepseek-chat-v3.1"
+    # A/B/drop is a JUDGMENT task — use a strong model (cheap models over-rate
+    # content farms). Scoring (the high-volume filter) stays cheap separately.
+    model: str = "anthropic/claude-sonnet-4.6"
     drop_content_farms: bool = True
 
 
