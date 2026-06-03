@@ -21,11 +21,27 @@ import os
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+import feedparser
 import httpx
 
 from pitchfinder.discovery import BROWSER_UA, HTTP_TIMEOUT, _slugify, resolve_feed_url, search_podcasts
 
 logger = logging.getLogger("pitchfinder.web_discovery")
+
+
+def feed_title(feed_url: str) -> Optional[str]:
+    """The feed's own <title> = the publication/channel name (not a post title).
+    Web search results are often individual posts, so prefer this for naming."""
+    if not feed_url:
+        return None
+    try:
+        parsed = feedparser.parse(feed_url)
+        t = (parsed.feed.get("title") or "").strip() if parsed and parsed.feed else ""
+        # strip trailing " | Substack" / " - YouTube" noise
+        t = t.split(" | ")[0].split(" - YouTube")[0].strip()
+        return t or None
+    except Exception:
+        return None
 
 
 # ---------- provider clients ----------
@@ -175,12 +191,15 @@ def discover_web_creators(
             platform, root, handle = norm
             if (platform, handle) in seen_handles:
                 continue
-            name = res.get("title", "").strip() or f"{handle} ({platform})"
-            # strip common title noise
-            name = name.split(" | ")[0].split(" - ")[0].strip()[:120] or handle
+            feed = resolve_feed_url(platform, root)
+            # Prefer the feed's own title (publication/channel name) over the
+            # search-result title, which is usually a single post's headline.
+            name = feed_title(feed) if feed else None
+            if not name:
+                name = res.get("title", "").strip().split(" | ")[0].split(" - ")[0].strip()[:120]
+            name = name or handle
             if name.lower() in existing:
                 continue
-            feed = resolve_feed_url(platform, root)
             seen_handles.add((platform, handle))
             candidates.append({
                 "name": name, "platform": platform, "handle": handle,
