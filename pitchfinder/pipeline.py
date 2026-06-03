@@ -795,6 +795,13 @@ def _build_report(db: str, search_id: int, min_score: int) -> Optional[tuple[str
                 c["deep_dive"] = payload
             else:
                 c["deep_dive"] = None
+
+            # Latest outreach status (any campaign) so the CSV is trackable.
+            orow = conn.execute(
+                "SELECT status FROM outreach WHERE creator_id = ? ORDER BY id DESC LIMIT 1",
+                (c["creator_id"],),
+            ).fetchone()
+            c["outreach_status"] = orow["status"] if orow else ""
     finally:
         conn.close()
 
