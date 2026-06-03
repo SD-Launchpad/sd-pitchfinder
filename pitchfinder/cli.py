@@ -93,6 +93,68 @@ def show(
 
 
 @app.command()
+def classify(
+    search_id: int = typer.Argument(..., help="A previous search id"),
+    brand: Optional[Path] = typer.Option(
+        None, "--brand", help="brand.yaml for richer context (themes/competitors/do-not)"
+    ),
+    min_score: int = typer.Option(40, "--min-score"),
+    model: Optional[str] = typer.Option(None, "--model", help="Override classifier model"),
+    db: str = typer.Option(DEFAULT_DB),
+) -> None:
+    """Auto-classify ranked creators into A / B / drop (persisted to creator_tiers).
+
+    A = strongly recommend, B = worth reaching out, drop = content farm / off-topic.
+    Manual overrides (`pitchfinder tier`) are never clobbered. `show` then renders
+    only A+B, A first.
+    """
+    from pitchfinder.db import get_conn
+    from pitchfinder.pipeline import run_classify_tiers
+
+    if brand:
+        from pitchfinder.config import load_brand_config
+
+        cfg = load_brand_config(brand)
+        summary = cfg.launch_description()
+        if cfg.do_not:
+            summary += " Do not fabricate: " + "; ".join(cfg.do_not) + "."
+        if model is None:
+            model = cfg.tiering.model  # judgment task → strong model from config
+    else:
+        conn = get_conn(db)
+        try:
+            row = conn.execute("SELECT description FROM searches WHERE id = ?", (search_id,)).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            console.print(f"[red]Search {search_id} not found.[/red]")
+            raise typer.Exit(1)
+        summary = row["description"]
+
+    counts = run_classify_tiers(db, search_id, summary, min_score=min_score, model=model)
+    console.print(f"[green]Tiered:[/green] A={counts.get('A', 0)} B={counts.get('B', 0)} drop={counts.get('drop', 0)}")
+
+
+@app.command()
+def tier(
+    search_id: int = typer.Argument(...),
+    creator_id: int = typer.Argument(...),
+    new_tier: str = typer.Argument(..., help="A | B | drop"),
+    note: Optional[str] = typer.Option(None, "--note"),
+    db: str = typer.Option(DEFAULT_DB),
+) -> None:
+    """Manually override a creator's tier (survives future auto-classify)."""
+    from pitchfinder.pipeline import set_tier
+
+    nt = new_tier.strip()
+    if nt not in ("A", "B", "drop"):
+        console.print("[red]tier must be A, B, or drop[/red]")
+        raise typer.Exit(1)
+    set_tier(db, search_id, creator_id, nt, note)
+    console.print(f"[green]Set[/green] creator={creator_id} -> tier {nt}")
+
+
+@app.command()
 def status(
     creator_id: int = typer.Argument(...),
     campaign: str = typer.Argument(...),

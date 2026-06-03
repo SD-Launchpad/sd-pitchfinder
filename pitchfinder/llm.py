@@ -188,13 +188,20 @@ Launch description:
 {ct_cap} title: {title}
 {ct_cap} description/excerpt: {summary}
 
-Score 0-100:
-- 90+: directly discusses the same problem space, techniques, or category
-- 70-89: discusses an adjacent topic; author would have an informed view
-- 50-69: tangentially related
+Score 0-100 on TOPICAL relevance AND source quality together:
+- 90+: an individual expert / established outlet engaging deeply and specifically
+  with the same problem space, techniques, or category
+- 70-89: a credible voice on an adjacent topic; the author would have an informed view
+- 50-69: tangentially related, or relevant but shallow
 - <50: not relevant
 
-Return JSON only: {{"score": <int>, "reason": "<one sentence>"}}"""
+Penalise hard (cap at 40) if the source looks like a CONTENT FARM rather than a
+real expert worth pitching: generic AI news aggregators / rewrites, SEO listicles
+("Top 10 AI tools…"), keyword-stuffed roundups, churned daily briefs with no
+individual point of view, or vague hype with no concrete argument. A piece that
+merely name-drops the keywords without substance is NOT a 90.
+
+Return JSON only: {{"score": <int>, "reason": "<one sentence; note if content-farm>"}}"""
     result = _call_json(_relevance_model(), prompt, max_tokens=256)
     if not isinstance(result, dict):
         return {"score": 0, "reason": "non-dict response"}
@@ -256,3 +263,77 @@ Return JSON only:
                 }
             )
     return cleaned
+
+
+# ---------- 4. Tier classification (A / B / drop) ----------
+
+
+def classify_tiers(
+    brand_summary: str,
+    creators: list[dict],
+    model: str | None = None,
+    batch_size: int = 10,
+) -> dict[int, dict]:
+    """Classify each creator into A / B / drop for an outreach campaign.
+
+    Recall-first: only `drop` content farms / clearly off-topic sources; keep
+    every genuine, on-topic creator (A = high relevance + high confidence,
+    strongly recommend; B = moderate relevance, worth reaching out to).
+
+    `creators` items need: creator_id, name, platform, influence_score, and
+    `signal` (a short string, e.g. top item titles). Returns
+    {creator_id: {"tier": "A"|"B"|"drop", "rationale": str}}. Batched to keep
+    cost low. Creators missing from the model's reply default to tier B.
+    """
+    out: dict[int, dict] = {}
+    chosen = model or _relevance_model()
+    for start in range(0, len(creators), batch_size):
+        batch = creators[start:start + batch_size]
+        rows = "\n".join(
+            f'{c["creator_id"]}\t{c["name"]} ({c["platform"]}, influence {c.get("influence_score", "?")}) '
+            f'— recent: {c.get("signal", "")[:240]}'
+            for c in batch
+        )
+        prompt = f"""You are triaging creators for a founder's press/outreach list.
+
+Brand / launch context:
+{brand_summary}
+
+For EACH creator below, assign an outreach tier:
+- "A": high relevance AND high confidence — an individual expert or established
+  outlet whose audience maps directly to this launch. Strongly recommend.
+- "B": moderate or narrower relevance, or lower confidence, but still genuinely
+  on-topic and worth a pitch. Recall-first: when unsure between B and drop, pick B.
+- "drop": content farm / SEO aggregator / generic news rewrite / clearly off-topic.
+
+Guidance: a brand/publication account that churns keyword-matching rewrites
+(e.g. "Interesting Engineering", generic "…Developers"/"…Magazine" blogs, anonymous
+roundup Substacks) is a "drop" even if the title mentions the right keywords —
+on-topic wording is NOT enough. Favour A/B for *named individual experts* and
+established, editorially-credible outlets.
+
+Creators (id<TAB>description):
+{rows}
+
+Return JSON only, one object per creator:
+[{{"creator_id": <int>, "tier": "A"|"B"|"drop", "rationale": "<one short sentence>"}}]"""
+        try:
+            result = _call_json(chosen, prompt, max_tokens=1200)
+        except Exception as exc:
+            logger.warning("classify_tiers batch failed (%s): %s", chosen, exc)
+            result = []
+        if isinstance(result, list):
+            for e in result:
+                if not isinstance(e, dict):
+                    continue
+                try:
+                    cid = int(e.get("creator_id"))
+                except (TypeError, ValueError):
+                    continue
+                tier = str(e.get("tier", "B")).strip().upper()
+                tier = {"A": "A", "B": "B", "DROP": "drop"}.get(tier, "B")
+                out[cid] = {"tier": tier, "rationale": str(e.get("rationale", ""))[:300]}
+        # default any unreturned creators in this batch to B
+        for c in batch:
+            out.setdefault(c["creator_id"], {"tier": "B", "rationale": "(defaulted)"})
+    return out
