@@ -1,0 +1,63 @@
+# PitchFinder campaign config — EverMind launch.
+# Run:  pitchfinder campaign brands/evermind.yaml
+brand: evermind
+
+one_liner: "EverMind — 'Memory is the defining line between a tool and an agent.' Give your AI agent self-evolving memory."
+
+positioning: >
+  EverMind builds the memory layer for AI agents. EverOS is a memory operating
+  system that turns stateless LLMs into agents that truly remember — persistent,
+  self-evolving memory across sessions, multimodal ingestion/retrieval (mRAG),
+  a transparent, inspectable Memory Bank, temporal knowledge tracking, and
+  multi-agent group memory; it distills repeated patterns into reusable Skills
+  shared across an agent team (claims 93%+ retrieval accuracy, <500ms p95,
+  ~10x lower cost than context-window approaches, Claude Code compatible).
+  EverMe is a personal "digital twin" memory — Profile / Behaviors / Episodic /
+  Foresights, visualizable, traceable and controllable, that lets any AI agent
+  work on top of your real, sourced personal memory.
+
+# Discovery queries use the first `per_platform_queries` themes — order matters.
+themes:
+  - AI memory
+  - long-term memory for AI agents
+  - agent memory
+  - self-evolving AI
+  - memory operating system for LLMs
+  - retrieval augmented generation memory
+  - stateful agents
+  - multi-agent memory
+  - personal AI digital twin
+  - context engineering for agents
+
+competitors:
+  - Letta (MemGPT)
+  - MemOS
+  - mem0
+  - Zep
+  - LangMem
+  - Cognee
+
+do_not:
+  - metrics not published by EverMind itself (only the site's own 93%/<500ms/10x are citable)
+  - named customers or logos
+  - unverifiable claims
+
+platforms: [substack, blog, podcast, youtube]
+
+discovery:
+  providers: [brave, querit]
+  per_platform_queries: 5
+  mirothinker_fallback_min: 60
+  mirothinker_model: mirothinker-1-7-deepresearch-mini
+
+tiering:
+  model: anthropic/claude-sonnet-4.6   # judgment task → strong model
+  drop_content_farms: true
+
+deepdive:
+  tier: A
+  top_n: 5
+  model: mirothinker-1-7-deepresearch
+
+budget:
+  max_deepdive: 8
