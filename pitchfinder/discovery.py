@@ -356,6 +356,15 @@ Return JSON only — an array of objects with this exact shape:
 def write_candidates_yaml(candidates: list[dict[str, Any]], output_path: Path) -> None:
     """Write candidates as YAML stanzas matching seed_creators.yaml format."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _notes(c: dict) -> str:
+        # Respect a pre-set notes (e.g. from web discovery); else build the
+        # MiroThinker-style note from why_relevant.
+        if c.get("notes"):
+            return c["notes"]
+        why = c.get("why_relevant", "")
+        return f"DISCOVERED via MiroThinker. Why: {why}. Verify feed_url before loading."
+
     body = {
         "creators": [
             {
@@ -363,11 +372,11 @@ def write_candidates_yaml(candidates: list[dict[str, Any]], output_path: Path) -
                 "platform": c["platform"],
                 "handle": c["handle"],
                 "url": c["url"],
-                "feed_url": c["feed_url"],
-                "topics": c["topics"],
-                "influence_score": c["influence_score"],
+                "feed_url": c.get("feed_url"),
+                "topics": c.get("topics", []),
+                "influence_score": c.get("influence_score", 50),
                 "contact": {"email": None, "other": None},
-                "notes": f"DISCOVERED via MiroThinker. Why: {c['why_relevant']}. Verify feed_url before loading.",
+                "notes": _notes(c),
             }
             for c in candidates
         ]

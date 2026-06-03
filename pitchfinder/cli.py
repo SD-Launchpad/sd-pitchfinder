@@ -342,6 +342,67 @@ def discover_creators(
         )
 
 
+@app.command("discover-web")
+def discover_web(
+    themes: Optional[str] = typer.Argument(
+        None, help="Comma-separated themes (or use --brand to pull them from a config)"
+    ),
+    brand: Optional[Path] = typer.Option(None, "--brand", help="brand.yaml (themes + platforms)"),
+    platforms: str = typer.Option("substack,blog,youtube,podcast", "--platforms"),
+    providers: str = typer.Option("brave,querit", "--providers"),
+    per_platform: int = typer.Option(4, "--per-platform", help="themes used per platform"),
+    output: Path = typer.Option(Path("reports/discovered_web.yaml"), "--output"),
+    db: str = typer.Option(DEFAULT_DB),
+) -> None:
+    """Broadly discover creators across the open web (Brave primary, Querit supplement).
+
+    Resolves feeds and writes seed-loadable candidates. Env-gated: a provider with
+    no key is skipped. Review the YAML, then `load` + `lint` + `refresh`.
+    """
+    from pitchfinder.db import get_conn
+    from pitchfinder.discovery import write_candidates_yaml
+    from pitchfinder.web_discovery import discover_web_creators, providers_available
+
+    if brand:
+        from pitchfinder.config import load_brand_config
+
+        cfg = load_brand_config(brand)
+        theme_list = cfg.themes
+        plat_list = cfg.platforms
+        prov_list = cfg.discovery.providers
+        per_platform = cfg.discovery.per_platform_queries
+    else:
+        if not themes:
+            console.print("[red]Provide themes (positional) or --brand.[/red]")
+            raise typer.Exit(1)
+        theme_list = [t.strip() for t in themes.split(",") if t.strip()]
+        plat_list = [p.strip() for p in platforms.split(",") if p.strip()]
+        prov_list = [p.strip() for p in providers.split(",") if p.strip()]
+
+    avail = providers_available()
+    console.print(f"Providers with keys: {avail or '(none — only iTunes podcasts will run)'}")
+
+    conn = get_conn(db)
+    try:
+        existing = {r["name"] for r in conn.execute("SELECT name FROM creators").fetchall()}
+    finally:
+        conn.close()
+
+    cands = discover_web_creators(
+        themes=theme_list, platforms=plat_list, existing_names=existing,
+        providers=prov_list, per_platform_queries=per_platform,
+    )
+    if not cands:
+        console.print("[yellow]No new candidates found.[/yellow]")
+        return
+    write_candidates_yaml(cands, output)
+    resolved = sum(1 for c in cands if c.get("feed_url"))
+    console.print(
+        f"[green]Wrote {len(cands)} candidates[/green] ({resolved} with resolved feed) to {output}\n"
+        f"Next: review, then `pitchfinder load {output}` + `lint` + `refresh`."
+    )
+
+
 @app.command("discover-substack")
 def discover_substack(
     substack_url: str = typer.Argument(..., help="A Substack URL whose /recommendations to scrape"),
