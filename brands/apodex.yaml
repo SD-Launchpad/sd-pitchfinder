@@ -1,0 +1,60 @@
+# PitchFinder campaign config — Apodex launch.
+# Run end-to-end with:  pitchfinder campaign brands/apodex.yaml
+brand: apodex
+
+one_liner: "Apodex (relaunch of miromind.ai) — 'Think. Act. Verify. Evolve.' / 'Slow but Right'."
+
+positioning: >
+  A verification-centric autonomous AI system / agent OS for long-horizon agentic
+  tasks. Three layers: Apodex-T (deep reasoning), Apodex-H (autonomous execution
+  and tool use), Apodex-V (verifies every reasoning step before the next begins —
+  auditable, replayable, self-evolving, open-source). Built for high-stakes domains
+  where being wrong is not an option: scientific research, finance and risk, legal
+  and compliance, life sciences, software engineering.
+
+themes:
+  - verifiable AI
+  - heavy-duty solver
+  - AI for science
+  - self-evolving AI
+  - post-training
+  - reinforcement learning from verifiable rewards
+  - test-time reasoning
+  - theorem proving
+  - hallucination-free deep research
+  - autonomous agents
+
+competitors:
+  - OpenAI o3 research
+  - Gemini thinking
+  - Kimi k2 thinking
+  - Claude Opus 4.8 adaptive
+  - axiommath.ai
+  - recursive.com
+
+# Red lines — never fabricate these in pitch angles (the launch site lists no
+# metrics or customers, so neither do we).
+do_not:
+  - fabricated benchmark numbers or percentages
+  - named customers or logos
+  - unverifiable claims
+
+platforms: [substack, blog, podcast, youtube]
+
+discovery:
+  providers: [brave, querit]
+  per_platform_queries: 4
+  mirothinker_fallback_min: 60
+  mirothinker_model: mirothinker-1-7-deepresearch-mini
+
+tiering:
+  model: deepseek/deepseek-chat-v3.1
+  drop_content_farms: true
+
+deepdive:
+  tier: A
+  top_n: 5
+  model: mirothinker-1-7-deepresearch
+
+budget:
+  max_deepdive: 8
