@@ -1,285 +1,109 @@
 # PitchFinder
 
-内部 CLI 工具——给定一段产品发布描述，从已知 AI/tech creator 库里挑出最值得 pitch 的人，附带他们最近相关内容、verified context、联系方式和个性化 pitch angle。
-
-单用户工具。无 auth / 无 SaaS / 无多租户。
-
-数据源：newsletter（Substack/Beehiiv/个人博客）、podcast、YouTube 频道——全走 RSS/Atom 统一抓取。
+给一个产品发布,自动找出**最值得 pitch 的 newsletter / podcast / YouTuber / 博客**,并产出带联系方式、近期作品和 pitch angle 的分层名单。
 
 ---
 
-## 一、安装
+## 这是做什么的 / 解决什么问题
 
-需要 Python 3.11+（实测 3.12）。
+发布一个新产品时,你想找媒体/创作者帮你传播。手工找的痛点是:
 
-```bash
-cd shanda/pitchfinder
-uv venv --python 3.12 .venv          # 或: python3 -m venv .venv
-source .venv/bin/activate
-uv pip install -e . --python .venv/bin/python    # 或: pip install -e .
-```
+- 不知道**去哪找**对题的独立创作者;
+- 找到一堆,但分不清谁是**真·中立 thought leader**,谁是内容农场 / 竞品 / 自家带货的商业站;
+- 找到了也不知道**怎么联系**、**该说什么**。
 
-填 API key——复制模板：
+PitchFinder 把这件事自动化:**全网发现 → 打分 → 分层 → 深度核验 → 出名单**。一条命令,产出可以直接拿去建联的 A/B 分层报告(HTML + CSV + Markdown)。
 
-```bash
-cp .env.example .env
-```
+## 谁用
 
-然后编辑 `.env` 填两个 key：
+你自己(或同事)——给任意一个产品/品牌跑一次,拿到一份 outreach 名单。每个品牌一个配置文件,可重复复用。
 
-| 变量 | 说明 |
+---
+
+## 你要给的 input
+
+只有一个:**一个品牌配置文件 `brands/<brand>.yaml`**。里面写清楚:
+
+| 字段 | 说明 |
 |---|---|
-| `OPENROUTER_API_KEY` | 用于 scoring + pitch angles + lint。必填。`sk-or-...` |
-| `MIROMIND_API_KEY` | 用于 `deep-dive` 命令（top 5 creator 做 verified web search）。非必填——只跑前 8 步不需要。`sk_live_...` |
+| `brand` | 品牌名(报告文件名用) |
+| `one_liner` / `positioning` | 产品是做什么的、怎么定位(喂给打分和分层) |
+| `themes` | 关键词主题(全网发现就按这些去搜,前几个最重要) |
+| `competitors` | 竞品名(分层时会自动 drop 掉竞品及其自营媒体) |
+| `do_not` | 红线(pitch angle 里不能编造的东西) |
+| `platforms` | 要找的平台:substack / blog / podcast / youtube |
 
----
+照着 `brands/apodex.yaml` 抄一份改即可。
 
-## 二、推荐 SOP（一次完整 PR campaign）
+> 一次性配置:把几个 API key 填进 `.env`(见最下)。
 
-```bash
-# 一次性
-pitchfinder init                              # 建 SQLite schema (6 张表)
-pitchfinder load seed_creators.yaml           # upsert 29 个 seed creator
-
-# 每次启动 PR campaign 前
-pitchfinder lint                              # 30 秒, ~$0.01, 验证所有 url 内容真实
-pitchfinder refresh                           # 拉取所有 RSS feeds 最新内容(90天)
-
-# 跑一次具体 launch
-pitchfinder search "Your launch description here" \
-  --min-score 55 --output reports/launch.html
-
-# 深度增强 top 5（live web search + verified quotes + 联系方式）
-pitchfinder deep-dive <search_id> --top 5
-
-# 剩余 ranks 6-13 用 Sonnet 4.6 best-effort
-pitchfinder deep-dive <search_id> --only <id1>,<id2>,... \
-  --model anthropic/claude-sonnet-4.6
-
-# 重渲染 HTML（合并 deep-dive 结果）
-pitchfinder show <search_id> --min-score 55 \
-  --output reports/launch-final.html
-
-# 实施 pitch 时跟踪状态
-pitchfinder status <creator_id> <campaign_name> pitched --notes "sent 2026-05-17"
-```
-
----
-
-## 三、模型搭配（按"scoring 便宜 + 报告准确可靠"）
-
-| 阶段 | 推荐模型 | 调用量 | 阶段成本 | 选这个的理由 |
-|---|---|---|---|---|
-| **Scoring** (Relevance) | `deepseek/deepseek-chat-v3.1` | ~1600 | ~$0.15 | 0% fail 实测稳定；便宜；scoring 只是过滤器 |
-| **Pitch angles** | `anthropic/claude-sonnet-4.6` | ~25 | ~$0.15 | 100% 稳；instruction-following 强；这是给你看的内容 |
-| **Deep-dive top 5** | `mirothinker-1-7-deepresearch` | 5 | ~$2.5 | 真做 web search + verification，能找最新作品引用、当前 stance、联系方式 |
-| **Deep-dive ranks 6-13** | `anthropic/claude-sonnet-4.6` | 8 | ~$0.20 | Best-effort 训练数据，honest 标注不确定 |
-| **Lint (URL 内容验证)** | `deepseek/deepseek-chat-v3.1` | ~30 | ~$0.01 | Haiku-class 够用，量小不在乎模型品级 |
-| **总计 / campaign** | | | **~$3** | |
-
-实测过不稳的（OpenRouter 路由层 short-JSON 输出失败率高）：
-- `deepseek/deepseek-v4-pro` (40% fail)
-- `deepseek/deepseek-v4-flash` (偶发空响应)
-- `z-ai/glm-5.1` (86% fail)
-
-要换模型，改 `.env`：
-
-```
-PITCHFINDER_RELEVANCE_MODEL=deepseek/deepseek-chat-v3.1
-PITCHFINDER_PITCH_MODEL=anthropic/claude-sonnet-4.6
-MIROMIND_DEEPRESEARCH_MODEL=mirothinker-1-7-deepresearch
-```
-
-任何 [OpenRouter model id](https://openrouter.ai/models) 都能用。
-
----
-
-## 四、命令详解
-
-### `init`
-建 SQLite schema（6 张表 + 索引）。当前 DB 在 `./pitchfinder.db`（gitignored）。
-
-### `load <yaml>`
-upsert seed creators。`ON CONFLICT(platform, handle) DO UPDATE`，重跑不会重复。
-
-### `lint`
-**内容感知**的 URL 验证器——比单纯 HTTP 200 检查更严。检测 5 种状态：
-- `ok` — 真的是 creator 的频道
-- `squatter` — GoDaddy/Sedo 域名待售页（HTTP 200 但实际是停泊）
-- `wrong_content` — 页面是别人的
-- `uncertain` — 反爬或 CAPTCHA 导致看不清
-- `unreachable` — DNS 失败 / 4xx / 5xx / 超时
-
-源于真实事故：`nopriors.com` HTTP 200 但实际是 GoDaddy 待售页，骗过了纯状态码检查。
-
-跑一次 ~30 秒 + ~$0.01，每次 `load` 后建议跑。
-
-### `refresh [--lookback-days 90] [--platforms substack,podcast,youtube]`
-抓所有 creator 的 feed_url，新 item 入库。URL UNIQUE，重跑不重复。失败的 feed 不抛错只 log。
-
-### `search "<description>" [--min-score 70] [--max-creators 30] [--output file.html|md]`
-
-四步流水：
-1. **Topic extraction** — Haiku-class 从描述提取 topics/keywords
-2. **Relevance scoring** — 每个 item 在 lookback 窗口里被打 0-100 分，并发 8 worker
-3. **Creator ranking** — score 过 `--min-score`（默认 70）的 item 汇总到 creator；creator 分 = 其 items 最高分；并列时按 `influence_score` 排序
-4. **Pitch angles** — Sonnet 给 top N creator 各生成 2-3 个 angle
-
-输出：terminal rich table + 可选 Markdown / **HTML 报告**（按 `--output` 后缀自动选）。
-
-### `deep-dive <search_id> [--top 10] [--only id1,id2] [--skip id1] [--model ...]`
-
-对已 search 的 top N creator 用 MiroThinker（或别的模型）做深度调研：
-- **verified_active** — 确认 6 个月内还活跃
-- **recent_themes** — 最近 6-12 月主流主题
-- **sharp_quotes** — 2-3 句锋利引用 + 真实 URL + 日期
-- **current_stance** — 当前立场总结
-- **pitch_hook** — cold-email 开场白建议
-- **contact** — email / Twitter / LinkedIn / contact form / preferred channel / 备注
-
-**默认 MiroThinker**（`mirothinker-1-7-deepresearch`，~$0.30/creator，含 web search fee）。MiroThinker 跑一个 ~6-9 分钟。
-
-**省钱档**：`--model anthropic/claude-sonnet-4.6` — best-effort from training data，不做 live search，~$0.02/creator，10 秒一个。Honest 模式：找不到不编造，sharp_quotes 留空。
-
-`--only` 指定具体 creator_id 不受 `--top` 限制；`--skip` 排除已 deep-dived 的。
-
-### `show <search_id> [--min-score 55] [--output file.html]`
-重新渲染之前的 search，自动 join `pitch_angles` + `deep_dives`。`--output` 用 `.html` 后缀生成完整 HTML 报告。
-
-### `status <creator_id> <campaign> <new_status> [--notes "..."]`
-跟踪 outreach 状态。允许值：`not_contacted`、`pitched`、`replied`、`confirmed`、`declined`、`published`。`pitched` 和 `replied` 自动记时间戳。
-
-### `discover-podcasts "<keyword>" [--limit 10]`
-查 Apple Podcasts iTunes API，输出可粘贴到 YAML 的 stanza。不自动入库。
-
-### `discover-substack <substack_url>`
-抓某 Substack 的 `/recommendations` 页找候选。Best-effort，DOM 变就坏。
-
----
-
-## 五、HTML 报告布局
-
-每个 creator 卡片自上而下：
-
-1. **Why we picked them**（绿色块）— 最高分 item + LLM 给的 reason
-2. **Their recent work that matches the launch** — top 3 items, 每条点开就是文章/episode 链接
-3. **Verified context**（紫色 = MiroThinker live search；灰色 = Sonnet best-effort）— recent themes / sharp quotes (带真实 source URL) / current stance / pitch hook
-4. **How to reach them**（黄色块）— email / Twitter / LinkedIn / contact form / preferred channel
-5. **Pitch angles**（橙色块）— 从 launch 数据生成的 2-3 个 angle
-
-报告 dark-mode aware，无外部 JS / CSS 依赖。
-
----
-
-## 六、数据模型（SQLite）
-
-| 表 | 用途 |
-|---|---|
-| `creators` | seed / discovered creator，`UNIQUE(platform, handle)` |
-| `items` | 90 天内 article / episode / video，`url` UNIQUE |
-| `searches` | 每次 `search` 一行，含 extracted_topics |
-| `relevance_scores` | 每次 search 每个 item 的 score + reason |
-| `pitch_angles` | 每次 search 每个 creator 的 angles JSON |
-| `deep_dives` | MiroThinker / Sonnet 深度调研的 payload + 用了什么模型 |
-| `outreach` | 手动状态跟踪 `(creator_id, campaign)` UNIQUE |
-
-数据库在 `./pitchfinder.db`（gitignored）。所有命令必须在项目根目录跑。
-
----
-
-## 七、`.env.example` 完整模板
+## 一条命令跑完
 
 ```bash
-# --- OpenRouter (relevance scoring + pitch angles + lint) ---
-OPENROUTER_API_KEY=
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-PITCHFINDER_RELEVANCE_MODEL=deepseek/deepseek-chat-v3.1
-PITCHFINDER_PITCH_MODEL=deepseek/deepseek-chat-v3.1
-OPENROUTER_APP_NAME=pitchfinder
-OPENROUTER_HTTP_REFERER=https://github.com/shanda-launchpad/shanda-pitchfinder
-
-# --- MiroMind / MiroThinker (deep-dive enrichment) ---
-MIROMIND_API_KEY=
-MIROMIND_BASE_URL=https://api.miromind.ai/v1
-MIROMIND_DEEPRESEARCH_MODEL=mirothinker-1-7-deepresearch
+pitchfinder campaign brands/<brand>.yaml
 ```
+
+约 30–45 分钟(大头是深度核验)。想省钱/提速:`--budget 5`(限制深验数量)、`--skip-discovery`(复用已有库)。
+
+## 中间发生了什么(5 步)
+
+```
+1. 发现   discover-web —— 用 Brave + Querit 全网搜,按 themes 捞候选创作者,解析出他们的 RSS feed
+2. 抓取   refresh —— 拉每个创作者自己 feed 的近 90 天真实发文
+3. 打分   search —— 用便宜模型给每篇内容打 0-100 相关性分,聚合到创作者
+4. 分层   classify —— 用强模型(Sonnet)判 A / B / drop:
+            · drop 内容农场、竞品、自家带货的商业站(只留中立第三方)
+            · A = 强烈推荐建联,B = 可以建联
+5. 深验   deep-dive —— 用 MiroThinker 对 Tier-A 头部做真实 web 搜索,
+            拿到 verified 联系方式 + 近期原话 + pitch hook
+```
+
+## 你拿到的 output
+
+`reports/<brand>-<日期>.html` / `.csv` / `.md` 三份同内容:
+
+- **A/B 分层名单**(A 在前,drop 的不出现);
+- 每个创作者一张卡片:为什么选他 → 匹配的近期作品(带链接)→ 怎么联系 → 2-3 条贴你产品的 pitch angle;
+- 头部若干个有 MiroThinker **深度核验**的联系方式和原话;
+- **CSV** 是扁平表,直接拖进 Google Sheet 跟进 outreach。
 
 ---
 
-## 八、Out of scope（不构建）
+## 单独命令(也可不跑整条 campaign)
 
-- 邮件自动发送 / 自动 pitch
-- 多用户 / auth / SaaS / 网页托管
-- X / Twitter / LinkedIn / TikTok 内容抓取
-- YouTube 视频 transcript 提取
-- 中国大陆媒体（机器之心 / 量子位 / 36Kr 等）
-
----
-
-## 九、踩过的坑（已修，留作记忆）
-
-- **MiroThinker 默认 SSE streaming** — OpenAI SDK 默认 non-stream，必须用 `stream=True` 才能拿到 chunk
-- **DeepSeek V4 / GLM 5.1 在 short JSON 输出场景下 OpenRouter 路由不稳** — 40-86% 返回空字符串
-- **httpx 默认不带 brotli 解码器** — Accept-Encoding 不能写 `br`
-- **HTTP 200 ≠ 内容真实** — `nopriors.com` 是 GoDaddy 待售页，所以加了 `pitchfinder lint`
-- **podcast feed 的 `<id>` 字段有时是 UUID 不是 URL** — fetcher 已经只接 http(s) URL
-
----
-
-## 10. v2 — 通用 campaign agent（Brave/Querit 漏斗 + A/B 分层 + CSV）
-
-v1 是「手动跑各命令」；v2 把它做成**任意品牌可复用**的成本漏斗，一条命令端到端。
-
-### 成本漏斗
-```
-Brave 主 + Querit 补（廉价广筛全网候选） → resolve feed → load → refresh
-  → DeepSeek 打分（廉价排序，已惩罚内容农场）
-  → 强模型自动分层 A / B / drop（+ 人工 review）
-  → MiroThinker 只对 Tier-A top-N 深验（贵的留最后；召回不足才兜底）
-  → 同时输出 HTML + CSV + Markdown
-```
-
-### 一条命令跑完
-每个品牌一个 `brands/<brand>.yaml`（见 `brands/apodex.yaml`：定位 / themes / 竞品 / 红线 / 平台 / 预算）：
-```bash
-pitchfinder campaign brands/apodex.yaml            # 全流程
-pitchfinder campaign brands/apodex.yaml --budget 5 # 硬限 MiroThinker 深验 5 个
-pitchfinder campaign brands/apodex.yaml --skip-discovery   # 复用现有库
-```
-产出：`reports/<brand>-<date>.{html,csv,md}`。
-
-### 新命令（也可单独用）
 | 命令 | 作用 |
 |---|---|
-| `discover-web "<themes>" [--brand b.yaml]` | Brave/Querit 全网捞 creator，解析 feed，产候选 yaml。无 key 的 provider 自动跳过 |
-| `classify <search_id> [--brand b.yaml]` | 强模型自动分 A/B/drop（写 `creator_tiers`），不覆盖人工 override |
-| `tier <search_id> <creator_id> <A\|B\|drop>` | 人工调档（`source=manual`，re-classify 不覆盖） |
-| `search/show --output x.csv` | CSV 导出（扁平列，直接进 Google Sheet） |
+| `discover-web "<themes>" [--brand b.yaml]` | 全网发现创作者,产候选 YAML(无 key 的源自动跳过) |
+| `load <yaml>` / `refresh` | 入库 / 拉 feed |
+| `search "<描述>" [--output x.csv]` | 打分排序,可直接导 CSV/HTML/MD |
+| `classify <search_id> --brand b.yaml` | 自动分 A/B/drop |
+| `tier <search_id> <creator_id> <A\|B\|drop>` | 人工调档(不会被自动分层覆盖) |
+| `deep-dive <search_id> --only <ids>` | 对指定创作者做深度核验 |
+| `show <search_id> --output x.html` | 重新渲染报告(html/csv/md 按后缀) |
 
-分层后 `show` 只渲染 A+B（drop 不出），A 排前、B 在后，卡片带 Tier 徽标。
+## 配置 / Key(一次性,填进 `.env`)
 
-### A/B 定义
-- **A**：高相关 + high-confidence，强烈推荐建联
-- **B**：中度相关，值得建联（recall 优先，拿不准归 B 不丢）
-- **drop**：内容农场 / SEO 聚合 / 跑题
-
-### 成本杠杆
-- 判断类（分层）用强模型（Sonnet，配置 `tiering.model`）——便宜模型会把内容农场误判为 A。
-- 发现兜底用 `mirothinker-…-mini`（`discovery.mirothinker_model`），且只在 web 召回 < `mirothinker_fallback_min` 时触发。
-- 深验只跑 Tier-A `deepdive.top_n`，受 `budget.max_deepdive` 硬上限。
-
-### Env（`.env`）
 ```bash
-BRAVE_API_KEY=          # 主发现源（免费 2000/月）
-QUERIT_API_TOKEN=       # 补充发现源
-# OpenRouter / MiroMind 同 v1
+cp .env.example .env   # 然后在 .env 里填:
+OPENROUTER_API_KEY=     # 打分 + pitch angle + 分层(必填)
+MIROMIND_API_KEY=       # 深度核验(深验需要)
+BRAVE_API_KEY=          # 全网发现(主)
+QUERIT_API_TOKEN=       # 全网发现(补);Brave/Querit 有一个就能用
 ```
 
-### 测试
+> key 在 Terminal 里填,别贴进聊天。`.env` 已 gitignore。
+
+## 成本
+
+单轮 campaign ≈ **$1.5–3**(发现/打分很便宜,大头是 Tier-A top-N 的 MiroThinker 深验)。深验贵的留到最后、只跑头部,所以可控。
+
+## 测试
+
 ```bash
 uv pip install -e ".[dev]"
-pytest          # tests/ 覆盖 config / CSV / feed 解析 / URL 归一 / schema 迁移
+pytest
 ```
 
-### 未做（future）
-- 跨平台同人去重（swyx newsletter+podcast、MLST pod+yt 合一卡）。
+---
+
+旧版命令细节(model lineup、各源行为、踩过的坑)见 git 历史。当前默认形态就是上面的 `campaign` 漏斗。
