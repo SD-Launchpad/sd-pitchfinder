@@ -268,11 +268,67 @@ Return JSON only:
 # ---------- 4. Tier classification (A / B / drop) ----------
 
 
+def _build_tier_prompt(brand_summary: str, competitors: list[str] | None, batch: list[dict]) -> str:
+    """Construct the A/B/drop classification prompt for one batch. Pure string
+    building (no network) so it's unit-testable."""
+    rows = "\n".join(
+        f'{c["creator_id"]}\t{c["name"]} ({c["platform"]}, influence {c.get("influence_score", "?")}) '
+        f'[{c.get("url") or "no-url"}] — recent: {c.get("signal", "")[:240]}'
+        for c in batch
+    )
+    comp_line = (
+        "Brand competitors (DROP these and any of their owned blogs/media): "
+        + ", ".join(competitors) + "\n\n"
+        if competitors else ""
+    )
+    return f"""You are triaging creators for a founder's press/outreach list.
+
+GOAL: find NEUTRAL, INDEPENDENT third-party thought leaders — newsletters,
+podcasts, YouTubers, editorial media, individual experts — that we could
+partner with to amplify this launch.
+
+Brand / launch context:
+{brand_summary}
+
+{comp_line}For EACH creator below, assign an outreach tier:
+- "A": high relevance AND high confidence — an independent expert or established
+  editorial outlet whose audience maps directly to this launch. Strongly recommend.
+- "B": moderate or narrower relevance, or lower confidence, but still a genuine,
+  on-topic, independent voice worth a pitch. Recall-first: unsure between B and
+  drop on an INDEPENDENT creator → pick B.
+- "drop": see the hard rules below.
+
+ALWAYS "drop" (on-topic wording is NOT enough to save these):
+1. NOT NEUTRAL — the source is a company/vendor and its blog/channel exists to
+   market its OWN product or business: a SaaS vendor's blog, OR a commercial
+   product-comparison / lead-gen / affiliate-marketplace site that sells or
+   monetises this exact category (e.g. a "best AI receptionist" directory that
+   sells leads, like GetVoIP). We cannot partner with commercially self-interested
+   sources to promote us.
+2. COMPETITOR — one of the listed competitors, or any direct competitor, or their
+   owned media.
+3. content farm / SEO aggregator / generic keyword-matching rewrite / off-topic.
+
+KEEP (A/B) independent newsletters, podcasts, YouTubers, editorial media and
+individual experts EVEN IF they run ads or affiliate links — an independent
+reviewer who covers many products is still a neutral third party we want. The
+test is "neutral independent voice" vs "company marketing its own product/category".
+Use the [url] as a signal: a product/company/comparison domain → likely drop;
+substack/youtube/personal-blog/editorial domain → likely keep.
+
+Creators (id<TAB>name (platform, influence) [url] — recent):
+{rows}
+
+Return JSON only, one object per creator:
+[{{"creator_id": <int>, "tier": "A"|"B"|"drop", "rationale": "<one short sentence; if drop, say why: vendor/competitor/farm>"}}]"""
+
+
 def classify_tiers(
     brand_summary: str,
     creators: list[dict],
     model: str | None = None,
     batch_size: int = 10,
+    competitors: list[str] | None = None,
 ) -> dict[int, dict]:
     """Classify each creator into A / B / drop for an outreach campaign.
 
@@ -289,34 +345,7 @@ def classify_tiers(
     chosen = model or _relevance_model()
     for start in range(0, len(creators), batch_size):
         batch = creators[start:start + batch_size]
-        rows = "\n".join(
-            f'{c["creator_id"]}\t{c["name"]} ({c["platform"]}, influence {c.get("influence_score", "?")}) '
-            f'— recent: {c.get("signal", "")[:240]}'
-            for c in batch
-        )
-        prompt = f"""You are triaging creators for a founder's press/outreach list.
-
-Brand / launch context:
-{brand_summary}
-
-For EACH creator below, assign an outreach tier:
-- "A": high relevance AND high confidence — an individual expert or established
-  outlet whose audience maps directly to this launch. Strongly recommend.
-- "B": moderate or narrower relevance, or lower confidence, but still genuinely
-  on-topic and worth a pitch. Recall-first: when unsure between B and drop, pick B.
-- "drop": content farm / SEO aggregator / generic news rewrite / clearly off-topic.
-
-Guidance: a brand/publication account that churns keyword-matching rewrites
-(e.g. "Interesting Engineering", generic "…Developers"/"…Magazine" blogs, anonymous
-roundup Substacks) is a "drop" even if the title mentions the right keywords —
-on-topic wording is NOT enough. Favour A/B for *named individual experts* and
-established, editorially-credible outlets.
-
-Creators (id<TAB>description):
-{rows}
-
-Return JSON only, one object per creator:
-[{{"creator_id": <int>, "tier": "A"|"B"|"drop", "rationale": "<one short sentence>"}}]"""
+        prompt = _build_tier_prompt(brand_summary, competitors, batch)
         try:
             result = _call_json(chosen, prompt, max_tokens=1200)
         except Exception as exc:

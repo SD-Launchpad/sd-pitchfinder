@@ -7,6 +7,7 @@ import io
 from pathlib import Path
 
 from pitchfinder.config import load_brand_config
+from pitchfinder.llm import _build_tier_prompt
 from pitchfinder.db import get_conn, init_schema
 from pitchfinder.discovery import resolve_feed_url
 from pitchfinder.pipeline import _render_csv
@@ -97,6 +98,30 @@ def test_render_csv_handles_missing_fields():
     out = _render_csv("d", creators, 1)
     rows = list(csv.DictReader(io.StringIO(out)))
     assert rows[0]["name"] == "Min" and rows[0]["tier"] == "" and rows[0]["email"] == ""
+
+
+# ---------- tier prompt construction (neutral-third-party gate) ----------
+
+def test_build_tier_prompt_includes_url_competitors_and_neutral_rule():
+    batch = [{
+        "creator_id": 7, "name": "GetVoIP", "platform": "blog",
+        "url": "https://getvoip.com", "influence_score": 80, "signal": "Best AI receptionists 2026",
+    }]
+    p = _build_tier_prompt("Solvea — AI receptionist.", ["Retell AI", "Vapi"], batch)
+    # creator url surfaced for the model to judge vendor-ness
+    assert "https://getvoip.com" in p
+    # competitors injected as a drop list
+    assert "Retell AI" in p and "Vapi" in p
+    # the neutral-third-party gate + vendor drop rule present
+    assert "NEUTRAL" in p and "drop" in p.lower()
+    assert "competitor" in p.lower() and "affiliate" in p.lower()
+
+
+def test_build_tier_prompt_no_competitors_ok():
+    batch = [{"creator_id": 1, "name": "X", "platform": "substack",
+              "url": None, "influence_score": 50, "signal": "y"}]
+    p = _build_tier_prompt("desc", None, batch)
+    assert "no-url" in p and "1\tX" in p
 
 
 # ---------- db migration idempotency ----------

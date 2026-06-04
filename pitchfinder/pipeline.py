@@ -858,6 +858,7 @@ def run_classify_tiers(
     brand_summary: str,
     min_score: int = 40,
     model: str | None = None,
+    competitors: list[str] | None = None,
 ) -> dict[str, int]:
     """Auto-classify all ranked creators for a search into A/B/drop and persist
     to creator_tiers (source='auto', won't overwrite a 'manual' override).
@@ -870,12 +871,13 @@ def run_classify_tiers(
             "creator_id": c["creator_id"],
             "name": c["name"],
             "platform": c["platform"],
+            "url": c.get("url"),
             "influence_score": c["influence_score"],
             "signal": " | ".join(it.get("title", "") for it in c.get("top_items", [])[:3]),
         }
         for c in creators
     ]
-    verdicts = classify_tiers(brand_summary, payload, model=model)
+    verdicts = classify_tiers(brand_summary, payload, model=model, competitors=competitors)
 
     conn = get_conn(db)
     counts = {"A": 0, "B": 0, "drop": 0}
@@ -1193,7 +1195,8 @@ def run_campaign(
     # 4. Auto-tier A/B/drop (strong model from config).
     summary = desc + ((" Do not fabricate: " + "; ".join(cfg.do_not) + ".") if cfg.do_not else "")
     console.print("[bold]Tiering[/bold] — A/B/drop ...")
-    counts = run_classify_tiers(db, search_id, summary, min_score=tier_min_score, model=cfg.tiering.model)
+    counts = run_classify_tiers(db, search_id, summary, min_score=tier_min_score,
+                                model=cfg.tiering.model, competitors=cfg.competitors)
     console.print(f"   A={counts.get('A',0)} B={counts.get('B',0)} drop={counts.get('drop',0)}")
 
     # 5. Backfill pitch angles for the kept (A+B) set.
