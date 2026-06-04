@@ -7,7 +7,7 @@ import io
 from pathlib import Path
 
 from pitchfinder.config import load_brand_config
-from pitchfinder.llm import _build_tier_prompt
+from pitchfinder.llm import _build_tier_prompt, _parse_json
 from pitchfinder.db import get_conn, init_schema
 from pitchfinder.discovery import resolve_feed_url
 from pitchfinder.pipeline import _render_csv
@@ -122,6 +122,20 @@ def test_build_tier_prompt_no_competitors_ok():
               "url": None, "influence_score": 50, "signal": "y"}]
     p = _build_tier_prompt("desc", None, batch)
     assert "no-url" in p and "1\tX" in p
+
+
+# ---------- JSON parse robustness (MiroThinker bad escapes) ----------
+
+def test_parse_json_tolerates_invalid_backslash_escape():
+    # MiroThinker-style payload with an illegal \$ and a fenced wrapper
+    raw = '```json\n{"pitch_hook": "save \\$10k", "ok": true}\n```'
+    out = _parse_json(raw)
+    assert out["ok"] is True and "10k" in out["pitch_hook"]
+
+
+def test_parse_json_still_parses_clean():
+    assert _parse_json('{"a": 1}') == {"a": 1}
+    assert _parse_json('[{"x": "y\\n"}]') == [{"x": "y\n"}]  # valid escapes untouched
 
 
 # ---------- db migration idempotency ----------
