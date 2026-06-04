@@ -85,17 +85,37 @@ def _call_once(model: str, prompt: str, max_tokens: int) -> str:
     return resp.choices[0].message.content or ""
 
 
+# A backslash NOT starting a valid JSON escape (" \ / b f n r t u) is illegal.
+# MiroThinker occasionally emits these (e.g. raw LaTeX / Windows paths / "\$"),
+# which makes json.loads raise "Invalid \escape" and the whole deep-dive return
+# empty. Doubling such lone backslashes recovers the payload.
+_BAD_ESCAPE_RE = re.compile(r'\\(?!["\\/bfnrtu])')
+
+
+def _sanitize_escapes(s: str) -> str:
+    return _BAD_ESCAPE_RE.sub(r"\\\\", s)
+
+
+def _loads_lenient(s: str) -> Any:
+    """json.loads, retrying once with invalid backslash-escapes sanitized."""
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        return json.loads(_sanitize_escapes(s))
+
+
 def _parse_json(text: str) -> Any:
-    """Try strict, then fence-strip + first {...}/[...] salvage."""
+    """Try strict, then fence-strip + first {...}/[...] salvage, tolerating
+    invalid backslash escapes that some models emit."""
     cleaned = _strip_fences(text)
     if not cleaned:
         raise ValueError("empty response")
     try:
-        return json.loads(cleaned)
+        return _loads_lenient(cleaned)
     except json.JSONDecodeError:
         m = re.search(r"(\{.*\}|\[.*\])", cleaned, re.DOTALL)
         if m:
-            return json.loads(m.group(1))
+            return _loads_lenient(m.group(1))
         raise
 
 
