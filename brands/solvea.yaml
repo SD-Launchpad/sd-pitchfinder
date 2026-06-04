@@ -1,0 +1,63 @@
+# PitchFinder campaign config — Solvea (solvea.cx).
+# Run:  pitchfinder campaign brands/solvea.yaml
+brand: solvea
+
+one_liner: "Solvea — deploy your AI Receptionist in under 3 minutes. Self-serve voice AI that answers, books, and sells, 24/7."
+
+positioning: >
+  Solvea is a self-serve AI receptionist / voice-agent platform for small
+  businesses. It goes live in under 3 minutes with no setup or code — you get a
+  free phone number for 7 days, it handles 50 customers free (no card), answers
+  inbound calls 24/7, books appointments, sells, and routes across channels,
+  with one-click integrations (Google, HubSpot, Slack). Used by SMBs across
+  verticals like medspa/healthcare and e-commerce. Category: AI receptionist /
+  AI call center / conversational voice AI for customer service — the self-serve,
+  SMB-friendly end of the market vs developer platforms.
+
+# Discovery queries use the first `per_platform_queries` themes — order matters.
+themes:
+  - AI receptionist
+  - AI voice agent
+  - AI call center
+  - conversational AI for customer service
+  - AI phone answering for small business
+  - no-code AI voice agents
+  - AI customer support automation
+  - voice AI startups
+  - AI SDR and sales automation
+  - small business AI automation
+
+competitors:
+  - Retell AI
+  - Vapi
+  - Bland AI
+  - Synthflow
+  - Air AI
+  - PolyAI
+  - Goodcall
+  - Rosie
+  - Smith.ai
+
+do_not:
+  - metrics or customer names not published by Solvea itself
+  - unverifiable claims
+
+platforms: [substack, blog, podcast, youtube]
+
+discovery:
+  providers: [brave, querit]
+  per_platform_queries: 5
+  mirothinker_fallback_min: 60
+  mirothinker_model: mirothinker-1-7-deepresearch-mini
+
+tiering:
+  model: anthropic/claude-sonnet-4.6   # judgment task → strong model
+  drop_content_farms: true
+
+deepdive:
+  tier: A
+  top_n: 5
+  model: mirothinker-1-7-deepresearch
+
+budget:
+  max_deepdive: 8

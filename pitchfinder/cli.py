@@ -127,6 +127,7 @@ def classify(
     from pitchfinder.db import get_conn
     from pitchfinder.pipeline import run_classify_tiers
 
+    competitors: list[str] = []
     if brand:
         from pitchfinder.config import load_brand_config
 
@@ -134,6 +135,7 @@ def classify(
         summary = cfg.launch_description()
         if cfg.do_not:
             summary += " Do not fabricate: " + "; ".join(cfg.do_not) + "."
+        competitors = cfg.competitors
         if model is None:
             model = cfg.tiering.model  # judgment task → strong model from config
     else:
@@ -147,7 +149,8 @@ def classify(
             raise typer.Exit(1)
         summary = row["description"]
 
-    counts = run_classify_tiers(db, search_id, summary, min_score=min_score, model=model)
+    counts = run_classify_tiers(db, search_id, summary, min_score=min_score, model=model,
+                                competitors=competitors)
     console.print(f"[green]Tiered:[/green] A={counts.get('A', 0)} B={counts.get('B', 0)} drop={counts.get('drop', 0)}")
 
 
