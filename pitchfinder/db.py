@@ -112,6 +112,8 @@ def get_conn(db_path: str | Path) -> sqlite3.Connection:
 # SQLite has no "ADD COLUMN IF NOT EXISTS", so we guard on PRAGMA table_info.
 _MIGRATIONS: list[tuple[str, str, str]] = [
     ("searches", "brand", "ALTER TABLE searches ADD COLUMN brand TEXT"),
+    ("creators", "twitter", "ALTER TABLE creators ADD COLUMN twitter TEXT"),
+    ("creators", "linkedin", "ALTER TABLE creators ADD COLUMN linkedin TEXT"),
 ]
 
 

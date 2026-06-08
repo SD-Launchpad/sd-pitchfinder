@@ -138,6 +138,40 @@ def test_parse_json_still_parses_clean():
     assert _parse_json('[{"x": "y\\n"}]') == [{"x": "y\n"}]  # valid escapes untouched
 
 
+# ---------- contact enrichment ----------
+
+def test_contacts_same_org_and_denylist():
+    from pitchfinder.contacts import _same_org, _clean_emails
+    assert _same_org("jane@acme.com", "https://acme.com/blog") is True
+    assert _same_org("jane@acme.com", "https://other.com") is False
+    assert _same_org("x@gmail.com", "https://gmail.com") is False        # generic host
+    # denylist drops transactional locals; keeps real ones
+    assert _clean_emails(["billing@x.com", "noreply@x.com", "hello@x.com"]) == ["hello@x.com"]
+
+
+def test_contacts_parse_substack_preloads():
+    from pitchfinder.contacts import parse_substack
+    blob = '{\\"pub\\":{\\"author_bio\\":\\"hi\\",\\"twitter_screen_name\\":\\"jackclarkSF\\",\\"support_email\\":\\"team@importai.org\\"}}'
+    html = f'<script>window._preloads = JSON.parse("{blob}")</script>'
+    info = parse_substack(html)
+    assert info["twitter"] == ["jackclarkSF"]
+    assert "team@importai.org" in info["emails"]
+
+
+def test_resolve_contact_priority():
+    from pitchfinder.pipeline import _resolve_contact
+    # verified deep-dive email wins
+    c = {"deep_dive": {"contact": {"email": "v@a.com"}}, "contact_email": "e@b.com",
+         "twitter": "https://x.com/h", "url": "https://x.sub.com", "platform": "substack"}
+    assert _resolve_contact(c)[3] == "v@a.com"
+    # no email → twitter
+    c2 = {"twitter": "https://x.com/h", "platform": "substack", "url": "https://p.substack.com"}
+    assert _resolve_contact(c2)[4] == "twitter"
+    # nothing but url → about
+    c3 = {"platform": "substack", "url": "https://p.substack.com"}
+    assert _resolve_contact(c3) == ("", "", "", "https://p.substack.com/about", "about")
+
+
 # ---------- db migration idempotency ----------
 
 def test_schema_has_tiers_and_brand(tmp_path):
