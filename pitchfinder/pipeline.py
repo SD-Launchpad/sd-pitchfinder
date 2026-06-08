@@ -299,6 +299,8 @@ def _rank_creators(db: str, search_id: int, min_score: int, max_creators: int) -
               c.url,
               c.contact_email,
               c.contact_other,
+              c.twitter,
+              c.linkedin,
               c.influence_score,
               MAX(rs.score) AS top_score
             FROM relevance_scores rs
@@ -335,6 +337,8 @@ def _rank_creators(db: str, search_id: int, min_score: int, max_creators: int) -
                     "url": r["url"],
                     "contact_email": r["contact_email"],
                     "contact_other": r["contact_other"],
+                    "twitter": r["twitter"],
+                    "linkedin": r["linkedin"],
                     "influence_score": r["influence_score"],
                     "top_score": r["top_score"],
                     "top_items": [dict(it) for it in items],
@@ -343,6 +347,29 @@ def _rank_creators(db: str, search_id: int, min_score: int, max_creators: int) -
         return out
     finally:
         conn.close()
+
+
+def _resolve_contact(c: dict) -> tuple[str, str, str, str, str]:
+    """Best reachable contact for a creator across all sources.
+    Priority: MiroThinker-verified email > enriched email > twitter > linkedin >
+    about page. Returns (email, twitter, linkedin, best_contact, contact_type)."""
+    dd = c.get("deep_dive") or {}
+    ddc = dd.get("contact") or {}
+    email = (ddc.get("email") or c.get("contact_email") or "").strip()
+    tw = (c.get("twitter") or ddc.get("twitter") or "").strip()
+    lk = (c.get("linkedin") or ddc.get("linkedin") or "").strip()
+    url = (c.get("url") or "").rstrip("/")
+    if email:
+        best, bt = email, "email"
+    elif tw:
+        best, bt = tw, "twitter"
+    elif lk:
+        best, bt = lk, "linkedin"
+    elif url:
+        best, bt = (url + "/about" if c.get("platform") == "substack" else url), "about"
+    else:
+        best, bt = "", "none"
+    return email, tw, lk, best, bt
 
 
 def _render_results(
@@ -447,7 +474,7 @@ def _render_markdown(description: str, creators: list[dict], search_id: int) -> 
 # the file pastes straight into a spreadsheet.
 _CSV_COLUMNS = [
     "rank", "tier", "name", "platform", "url", "score", "influence",
-    "email", "twitter", "linkedin", "preferred_channel",
+    "best_contact", "contact_type", "email", "twitter", "linkedin",
     "verified_active", "outreach_status",
     "top_match_title", "top_match_url",
     "angle_1", "angle_2", "angle_3",
@@ -463,10 +490,10 @@ def _render_csv(description: str, creators: list[dict], search_id: int) -> str:
     writer.writeheader()
     for i, c in enumerate(creators, 1):
         dd = c.get("deep_dive") or {}
-        contact = dd.get("contact") or {}
         angles = [a.get("angle", "") for a in (c.get("angles") or [])]
         top = (c.get("top_items") or [{}])[0]
         va = dd.get("verified_active")
+        email, tw, lk, best, btype = _resolve_contact(c)
         writer.writerow({
             "rank": i,
             "tier": c.get("tier", ""),
@@ -475,10 +502,11 @@ def _render_csv(description: str, creators: list[dict], search_id: int) -> str:
             "url": c.get("url") or "",
             "score": c.get("top_score", ""),
             "influence": c.get("influence_score", ""),
-            "email": contact.get("email") or c.get("contact_email") or "",
-            "twitter": contact.get("twitter") or "",
-            "linkedin": contact.get("linkedin") or "",
-            "preferred_channel": contact.get("preferred_channel") or c.get("contact_other") or "",
+            "best_contact": best,
+            "contact_type": btype,
+            "email": email,
+            "twitter": tw,
+            "linkedin": lk,
             "verified_active": "" if va is None else ("yes" if va else "no"),
             "outreach_status": c.get("outreach_status", ""),
             "top_match_title": top.get("title", ""),
@@ -714,32 +742,30 @@ blockquote {
         elif dd and dd.get("error"):
             parts.append(f'<div class="dd-row" style="color:#b91c1c;">⚠ Deep dive failed: {esc(dd["error"])}</div>')
 
-        # CONTACT block — pulled from deep-dive contact + creator table fallback
-        contact_email = (dd or {}).get("contact", {}).get("email") if dd else None
-        contact_email = contact_email or c.get("contact_email")
+        # CONTACT block — unified via _resolve_contact (enriched + deep-dive)
+        c_email, c_tw, c_lk, c_best, c_btype = _resolve_contact(c)
         dd_contact = (dd or {}).get("contact", {}) if dd else {}
-        any_contact = contact_email or dd_contact.get("twitter") or dd_contact.get("linkedin") or dd_contact.get("contact_form") or dd_contact.get("preferred_channel") or c.get("contact_other")
-        if any_contact:
+        if c_best:
             parts.append('<div class="contact-block">')
             parts.append('<div class="label">How to reach them</div>')
-            if contact_email:
-                parts.append(f'<div class="row">📧 Email: {link("mailto:" + contact_email, contact_email)}</div>')
-            if dd_contact.get("twitter"):
-                tw = dd_contact["twitter"].lstrip("@")
-                parts.append(f'<div class="row">🐦 Twitter/X: {link(f"https://twitter.com/{tw}", "@" + tw)}</div>')
-            if dd_contact.get("linkedin"):
-                parts.append(f'<div class="row">💼 LinkedIn: {link(dd_contact["linkedin"])}</div>')
+            if c_email:
+                parts.append(f'<div class="row">📧 Email: {link("mailto:" + c_email, c_email)}</div>')
+            if c_tw:
+                h = c_tw.rstrip("/").split("/")[-1].lstrip("@")
+                parts.append(f'<div class="row">🐦 Twitter/X: {link(c_tw, "@" + h)}</div>')
+            if c_lk:
+                parts.append(f'<div class="row">💼 LinkedIn: {link(c_lk)}</div>')
             if dd_contact.get("contact_form"):
                 parts.append(f'<div class="row">📨 Contact form: {link(dd_contact["contact_form"])}</div>')
             if dd_contact.get("preferred_channel"):
                 parts.append(f'<div class="row"><strong>Best channel:</strong> {esc(dd_contact["preferred_channel"])}</div>')
+            if c_btype == "about" and not (c_email or c_tw or c_lk):
+                parts.append(f'<div class="row">🔗 About / subscribe page: {link(c_best)}</div>')
             if dd_contact.get("notes"):
                 parts.append(f'<div class="row" style="color:#92400e;">{esc(dd_contact["notes"])}</div>')
-            if not dd and c.get("contact_other"):
-                parts.append(f'<div class="row">{link(c["contact_other"])}</div>')
             parts.append("</div>")
         else:
-            parts.append('<div class="contact-block" style="background:#fef2f2; border-color:#fecaca; color:#991b1b;">No public contact info on record. Run <code>pitchfinder deep-dive</code> to have MiroThinker hunt for one.</div>')
+            parts.append('<div class="contact-block" style="background:#fef2f2; border-color:#fecaca; color:#991b1b;">No public contact found.</div>')
 
         if c.get("angles"):
             parts.append('<div class="angles">')
@@ -922,6 +948,44 @@ def set_tier(db: str, search_id: int, creator_id: int, tier: str, note: str | No
         conn.commit()
     finally:
         conn.close()
+
+
+def run_enrich_contacts(db: str, search_id: int, use_brave: bool = True) -> dict:
+    """Resolve a reachable contact for EVERY A/B creator (not just deep-dived
+    top-N) and persist to the creators table (contact_email / twitter / linkedin).
+    Cheap: RSS / about-page / _preloads + throttled Brave fallback."""
+    from concurrent.futures import ThreadPoolExecutor
+    from pitchfinder.contacts import enrich_creator
+
+    conn = get_conn(db)
+    try:
+        rows = [dict(r) for r in conn.execute(
+            """SELECT c.id, c.name, c.platform, c.url, c.feed_url
+               FROM creator_tiers ct JOIN creators c ON c.id=ct.creator_id
+               WHERE ct.search_id=? AND ct.tier IN ('A','B')""", (search_id,)).fetchall()]
+    finally:
+        conn.close()
+    if not rows:
+        return {"total": 0, "real": 0}
+
+    def work(r):
+        return r["id"], enrich_creator(r, use_brave=use_brave)
+
+    results = list(ThreadPoolExecutor(max_workers=6).map(work, rows))
+    conn = get_conn(db)
+    try:
+        for cid, res in results:
+            # enrich is the single source of truth for these columns → overwrite
+            # (deep-dive verified contact is separate and wins via _resolve_contact)
+            conn.execute(
+                "UPDATE creators SET contact_email = ?, twitter = ?, linkedin = ? WHERE id = ?",
+                (res["email"], res["twitter"], res["linkedin"], cid),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    real = sum(1 for _, res in results if res["contact_type"] in ("email", "twitter", "linkedin"))
+    return {"total": len(results), "real": real}
 
 
 # ---------- deep-dive (MiroThinker enrichment) ----------
@@ -1198,6 +1262,11 @@ def run_campaign(
     counts = run_classify_tiers(db, search_id, summary, min_score=tier_min_score,
                                 model=cfg.tiering.model, competitors=cfg.competitors)
     console.print(f"   A={counts.get('A',0)} B={counts.get('B',0)} drop={counts.get('drop',0)}")
+
+    # 4b. Enrich contacts for every A/B creator (cheap; covers all, not just top-N).
+    console.print("[bold]Contacts[/bold] — resolving a reachable channel per A/B creator ...")
+    cc = run_enrich_contacts(db, search_id, use_brave=True)
+    console.print(f"   real contact (email/twitter/linkedin): {cc['real']}/{cc['total']}")
 
     # 5. Backfill pitch angles for the kept (A+B) set.
     built = _build_report(db, search_id, tier_min_score)

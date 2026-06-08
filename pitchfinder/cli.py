@@ -154,6 +154,21 @@ def classify(
     console.print(f"[green]Tiered:[/green] A={counts.get('A', 0)} B={counts.get('B', 0)} drop={counts.get('drop', 0)}")
 
 
+@app.command("enrich-contacts")
+def enrich_contacts(
+    search_id: int = typer.Argument(..., help="A previous search id"),
+    no_brave: bool = typer.Option(False, "--no-brave", help="Skip the Brave fallback"),
+    db: str = typer.Option(DEFAULT_DB),
+) -> None:
+    """Resolve a reachable contact for every A/B creator (email/twitter/linkedin),
+    persisted to the creators table. Covers all of A/B, not just deep-dived top-N.
+    `show` then renders each card's contact + the CSV's best_contact column."""
+    from pitchfinder.pipeline import run_enrich_contacts
+
+    cc = run_enrich_contacts(db, search_id, use_brave=not no_brave)
+    console.print(f"[green]Contacts:[/green] real (email/twitter/linkedin) {cc['real']}/{cc['total']}")
+
+
 @app.command()
 def tier(
     search_id: int = typer.Argument(...),
