@@ -377,6 +377,7 @@ def _render_results(
     creators: list[dict],
     search_id: int,
     output: Optional[Path],
+    meta: Optional[dict] = None,
 ) -> None:
     if not creators:
         console.print("[yellow]No creators matched. Try lowering --min-score.[/yellow]")
@@ -419,22 +420,25 @@ def _render_results(
         output.parent.mkdir(parents=True, exist_ok=True)
         suffix = output.suffix.lower()
         if suffix in (".html", ".htm"):
-            output.write_text(_render_html(description, creators, search_id))
+            output.write_text(_render_html(description, creators, search_id, meta))
             label = "HTML report"
         elif suffix == ".csv":
             output.write_text(_render_csv(description, creators, search_id))
             label = "CSV export"
         else:
-            output.write_text(_render_markdown(description, creators, search_id))
+            output.write_text(_render_markdown(description, creators, search_id, meta))
             label = "Markdown report"
         console.print(f"\n[green]{label} written:[/green] {output.resolve()}")
 
 
-def _render_markdown(description: str, creators: list[dict], search_id: int) -> str:
+def _render_markdown(description: str, creators: list[dict], search_id: int,
+                     meta: Optional[dict] = None) -> str:
+    title = (meta or {}).get("title")
+    heading = f"{title} — Creator & Press Outreach Brief" if title else "Creator & Press Outreach Brief"
     lines: list[str] = []
-    lines.append(f"# PitchFinder report — search {search_id}")
+    lines.append(f"# {heading}")
     lines.append("")
-    lines.append(f"_Generated {datetime.utcnow().isoformat(timespec='seconds')}Z_")
+    lines.append(f"_Prepared by PitchFinder · {datetime.utcnow().isoformat(timespec='seconds')}Z_")
     lines.append("")
     lines.append("## Launch description")
     lines.append("")
@@ -520,7 +524,9 @@ def _render_csv(description: str, creators: list[dict], search_id: int) -> str:
     return buf.getvalue()
 
 
-def _render_html(description: str, creators: list[dict], search_id: int) -> str:
+def _render_html(description: str, creators: list[dict], search_id: int,
+                 meta: Optional[dict] = None) -> str:
+    meta = meta or {}
     def esc(s: object) -> str:
         return html.escape(str(s if s is not None else ""), quote=True)
 
@@ -531,138 +537,255 @@ def _render_html(description: str, creators: list[dict], search_id: int) -> str:
 
     generated = datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
+    rtitle = meta.get("title") or "Creator & Press Outreach Brief"
+
     parts: list[str] = []
     parts.append("<!DOCTYPE html>")
     parts.append('<html lang="en"><head>')
     parts.append('<meta charset="utf-8">')
-    parts.append(f"<title>PitchFinder — search {search_id}</title>")
+    parts.append('<meta name="viewport" content="width=device-width, initial-scale=1">')
+    parts.append(f"<title>{esc(rtitle)} — Outreach Brief · PitchFinder</title>")
+    parts.append('<link rel="preconnect" href="https://fonts.googleapis.com">')
+    parts.append('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>')
+    parts.append('<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,900&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">')
     parts.append("""<style>
-:root { color-scheme: light dark; }
+:root {
+  --paper:#faf8f3; --panel:#fffdf8; --ink:#23262b; --muted:#73706a;
+  --rule:#e4ddcf; --accent:#1e3a5f; --accent-soft:#eef2f7;
+  --tier-a:#2f6b46; --tier-a-bg:#eaf3ed; --tier-b:#9a6a1a; --tier-b-bg:#f6efe1;
+  --serif:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --display:"Fraunces", Georgia, serif;
+  --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  max-width: 960px;
-  margin: 2em auto;
-  padding: 0 1em;
-  line-height: 1.55;
-  color: #1f2937;
-  background: #fafafa;
+  font-family: var(--serif);
+  max-width: 920px; margin: 0 auto; padding: 0 1.4em 5em;
+  line-height: 1.65; color: var(--ink); background: var(--paper);
+  -webkit-font-smoothing: antialiased; font-size: 17px;
 }
-h1 { margin-bottom: 0.2em; }
-.meta { color: #6b7280; font-size: 0.9em; margin-bottom: 2em; }
-blockquote {
-  border-left: 4px solid #2563eb;
-  background: #f0f7ff;
-  padding: 0.75em 1em;
-  margin: 0 0 2em 0;
-  border-radius: 4px;
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.num, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Letterhead */
+.letterhead { padding: 3.2em 0 2em; border-bottom: 1px solid var(--rule);
+  animation: rise .6s ease both; }
+.eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.22em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 1.1em;
+  display: flex; align-items: center; gap: 0.7em; }
+.eyebrow::before { content:""; width: 26px; height: 2px; background: var(--accent); display:inline-block; }
+.report-title { font-family: var(--display); font-weight: 600; font-size: 3rem;
+  line-height: 1.05; letter-spacing: -0.015em; margin: 0 0 0.35em; }
+.report-sub { font-family: var(--display); font-weight: 400; font-style: italic;
+  font-size: 1.35rem; color: var(--muted); margin: 0 0 1.1em; }
+.report-meta { font-family: var(--mono); font-size: 0.8rem; color: var(--muted);
+  letter-spacing: 0.04em; }
+
+/* Stats */
+.statbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--rule); border: 1px solid var(--rule); margin: 2.4em 0 1em;
+  animation: rise .6s .1s ease both; }
+.stat { background: var(--panel); padding: 1.1em 1.2em; }
+.stat-num { font-family: var(--display); font-weight: 600; font-size: 2.1rem;
+  line-height: 1; color: var(--accent); }
+.stat-num.a { color: var(--tier-a); } .stat-num.b { color: var(--tier-b); }
+.stat-label { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); margin-top: 0.5em; }
+.platdist { font-family: var(--mono); font-size: 0.76rem; color: var(--muted);
+  margin: 0 0 2.6em; letter-spacing: 0.03em; }
+.platdist b { color: var(--ink); font-weight: 600; }
+
+/* Section headings */
+h2.sec { font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--accent); margin: 3em 0 1.1em;
+  padding-bottom: 0.6em; border-bottom: 1px solid var(--rule); }
+
+/* The Brief */
+.brief-lead { font-family: var(--display); font-size: 1.5rem; font-weight: 400;
+  line-height: 1.4; margin: 0 0 0.9em; letter-spacing: -0.01em; }
+.brief-body { font-size: 1.02rem; color: #41454c; max-width: 64ch; margin: 0 0 1.3em; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.5em; margin: 0.5em 0 0.4em; }
+.chip { font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.02em;
+  padding: 0.3em 0.7em; background: var(--accent-soft); color: var(--accent);
+  border-radius: 2px; }
+.chip.comp { background: #f3eee6; color: #7a5a2a; }
+.chips-label { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); margin: 1.1em 0 0.2em; }
+
+/* Index table */
+.index-wrap { overflow-x: auto; margin: 0 0 1em; border: 1px solid var(--rule); }
+table.index { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 640px; }
+table.index thead th { position: sticky; top: 0; background: var(--panel);
+  font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted); text-align: left;
+  padding: 0.85em 0.9em; border-bottom: 1px solid var(--rule); font-weight: 600; }
+table.index td { padding: 0.7em 0.9em; border-bottom: 1px solid #efe9dc; vertical-align: middle; }
+table.index tr:last-child td { border-bottom: none; }
+table.index td.r, table.index th.r { text-align: right; }
+table.index .tier-dot { display:inline-block; width: 8px; height: 8px; border-radius: 50%; }
+table.index .tier-dot.A { background: var(--tier-a); }
+table.index .tier-dot.B { background: var(--tier-b); }
+table.index .cname { font-weight: 600; }
+table.index .plat { font-family: var(--mono); font-size: 0.74rem; color: var(--muted); }
+table.index .sc { font-family: var(--mono); }
+table.index .ct { font-size: 0.84rem; }
+
+/* Creator cards */
+.creator { background: var(--panel); border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule); padding: 1.5em 1.7em; margin: 1.1em 0;
+  break-inside: avoid; }
+.creator.A { border-left-color: var(--tier-a); }
+.creator.B { border-left-color: var(--tier-b); }
+.creator h3 { font-family: var(--display); font-weight: 600; margin: 0 0 0.5em;
+  font-size: 1.45rem; letter-spacing: -0.01em; }
+.creator h3 .rk { color: var(--muted); font-weight: 400; }
+.badge { display: inline-block; padding: 0.12em 0.6em; margin-left: 0.5em;
+  font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.06em;
+  text-transform: uppercase; border-radius: 2px; background: var(--accent-soft);
+  color: var(--accent); vertical-align: middle; }
+.badge.platform { background: #f0ece3; color: #6b6357; }
+.badge.tier-a { background: var(--tier-a-bg); color: var(--tier-a); }
+.badge.tier-b { background: var(--tier-b-bg); color: var(--tier-b); }
+.creator .meta-row { color: var(--muted); font-size: 0.86rem; margin-bottom: 0.9em;
+  font-family: var(--mono); letter-spacing: 0.02em; }
+.item { margin: 0.45em 0; padding: 0.6em 0.8em; background: var(--paper); border-radius: 2px; }
+.item .title-line { font-weight: 600; }
+.item .score-pill { display:inline-block; min-width: 2.4em; text-align:center;
+  padding: 0.05em 0.45em; margin-right: 0.5em; background: var(--accent);
+  color: #fff; border-radius: 2px; font-family: var(--mono); font-size: 0.78rem; }
+.item .reason { color: var(--muted); font-size: 0.86rem; margin: 0.3em 0 0 2.9em; font-style: italic; }
+.angles { margin-top: 1em; }
+.angles-label, .why-label, .dd-label, .contact-block .label {
+  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em;
+  text-transform: uppercase; margin-bottom: 0.5em; }
+.angles-label { color: var(--accent); }
+.angle { padding: 0.6em 0.85em; background: #fbf6ec; border-left: 2px solid var(--tier-b);
+  margin: 0.4em 0; }
+.angle .ref { display:block; color: var(--muted); font-size: 0.8rem; margin-top: 0.35em; font-family: var(--mono); }
+.why { background: var(--tier-a-bg); border-left: 2px solid var(--tier-a);
+  padding: 0.7em 0.9em; margin: 0.7em 0 0.9em; }
+.why-label { color: var(--tier-a); }
+.dd { background: #f4f1ea; border: 1px solid var(--rule); border-left: 2px solid var(--accent);
+  padding: 0.8em 1em; margin: 1em 0; }
+.dd.dd-sonnet { border-left-color: #94a3b8; }
+.dd-label { color: var(--accent); }
+.dd.dd-sonnet .dd-label { color: #5a6573; }
+.dd-row { margin: 0.45em 0; font-size: 0.95rem; }
+.dd-row strong { color: var(--accent); }
+.dd .quote { margin: 0.4em 0; padding: 0.5em 0.7em; background: var(--panel);
+  border-left: 2px solid var(--accent); font-style: italic; color: #41454c; }
+.dd .quote .src { display:block; font-style: normal; font-size: 0.8rem; color: var(--muted); margin-top: 0.3em; font-family: var(--mono); }
+.contact-block { background: var(--accent-soft); border: 1px solid #dbe3ec;
+  padding: 0.75em 1em; margin: 0.9em 0; }
+.contact-block .label { color: var(--accent); }
+.contact-block .row { margin: 0.25em 0; font-size: 0.92rem; }
+
+footer { margin-top: 4em; padding-top: 1.5em; border-top: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 0.74rem; color: var(--muted);
+  letter-spacing: 0.03em; line-height: 1.8; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 640px) {
+  .statbar { grid-template-columns: repeat(2, 1fr); }
+  .report-title { font-size: 2.2rem; }
 }
-.summary-table {
-  width: 100%; border-collapse: collapse; margin-bottom: 2.5em;
-  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  border-radius: 6px; overflow: hidden;
-}
-.summary-table th, .summary-table td {
-  padding: 0.55em 0.75em; text-align: left; border-bottom: 1px solid #e5e7eb;
-  font-size: 0.92em;
-}
-.summary-table th { background: #f3f4f6; font-weight: 600; }
-.summary-table tr:last-child td { border-bottom: none; }
-.summary-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-.creator {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 1.25em 1.5em;
-  margin: 1em 0;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-}
-.creator h3 { margin: 0 0 0.4em 0; font-size: 1.2em; }
-.badge {
-  display: inline-block; padding: 0.1em 0.55em; margin-left: 0.4em;
-  font-size: 0.78em; border-radius: 999px; background: #dbeafe;
-  color: #1e40af; font-weight: 600;
-}
-.badge.platform { background: #e0e7ff; color: #3730a3; }
-.badge.tier-a { background: #dcfce7; color: #166534; }
-.badge.tier-b { background: #fef9c3; color: #854d0e; }
-.creator .meta-row { color: #4b5563; font-size: 0.9em; margin-bottom: 0.8em; }
-.creator .meta-row a { color: #2563eb; text-decoration: none; }
-.creator .meta-row a:hover { text-decoration: underline; }
-.item { margin: 0.5em 0 0.5em 0; padding: 0.55em 0.75em; background: #f9fafb; border-radius: 4px; }
-.item .title-line { font-weight: 500; }
-.item .score-pill { display: inline-block; min-width: 2.4em; text-align: center; padding: 0.05em 0.4em; margin-right: 0.4em; background: #2563eb; color: white; border-radius: 4px; font-size: 0.85em; font-weight: 600; }
-.item .reason { color: #6b7280; font-size: 0.88em; margin: 0.3em 0 0 2.8em; font-style: italic; }
-.angles { margin-top: 0.9em; }
-.angles-label { font-weight: 600; color: #374151; margin-bottom: 0.4em; }
-.angle { padding: 0.55em 0.75em; background: #fef3c7; border-left: 3px solid #f59e0b; margin: 0.3em 0; border-radius: 4px; }
-.angle .ref { display: block; color: #6b7280; font-size: 0.82em; margin-top: 0.3em; }
-.why { background: #ecfdf5; border-left: 3px solid #10b981; padding: 0.55em 0.85em; margin: 0.6em 0 0.8em 0; border-radius: 4px; }
-.why-label { font-weight: 600; color: #065f46; margin-bottom: 0.3em; }
-.dd { background: #faf5ff; border: 1px solid #c084fc; padding: 0.7em 0.9em; margin: 0.9em 0; border-radius: 6px; }
-.dd.dd-sonnet { background: #f1f5f9; border-color: #94a3b8; }
-.dd.dd-sonnet .dd-label { color: #475569; }
-.dd-label { font-weight: 600; color: #6b21a8; margin-bottom: 0.5em; font-size: 0.95em; }
-.dd-row { margin: 0.4em 0; font-size: 0.92em; }
-.dd-row strong { color: #4c1d95; }
-.dd .quote { margin: 0.4em 0; padding: 0.4em 0.6em; background: #fff; border-left: 2px solid #a78bfa; font-style: italic; color: #4b5563; }
-.dd .quote .src { display: block; font-style: normal; font-size: 0.82em; color: #6b7280; margin-top: 0.3em; }
-.contact-block { background: #fef9c3; border: 1px solid #fde68a; padding: 0.6em 0.85em; margin: 0.7em 0; border-radius: 6px; }
-.contact-block .label { font-weight: 600; color: #854d0e; margin-bottom: 0.3em; }
-.contact-block .row { margin: 0.2em 0; font-size: 0.9em; }
-@media (prefers-color-scheme: dark) {
-  body { background: #0f172a; color: #e5e7eb; }
-  blockquote { background: #1e293b; border-left-color: #60a5fa; }
-  .creator { background: #1e293b; border-color: #334155; }
-  .summary-table { background: #1e293b; }
-  .summary-table th { background: #334155; }
-  .summary-table th, .summary-table td { border-bottom-color: #334155; color: #e5e7eb; }
-  .item { background: #0f172a; }
-  .badge { background: #1e3a8a; color: #dbeafe; }
-  .badge.platform { background: #312e81; color: #c7d2fe; }
-  .angle { background: #422006; border-left-color: #fbbf24; }
-  .creator .meta-row { color: #cbd5e1; }
-  .item .reason, .angle .ref { color: #94a3b8; }
+@media print {
+  body { background: #fff; font-size: 11pt; max-width: none; }
+  .letterhead, .statbar, .creator { animation: none; }
+  .creator, .dd, .why, .angle, .contact-block, .item { box-shadow: none; }
+  .creator { break-inside: avoid; border-left-width: 3px; }
+  a { color: var(--ink); }
+  .index-wrap { overflow: visible; }
 }
 </style>""")
     parts.append("</head><body>")
-    parts.append(f"<h1>PitchFinder report — search {search_id}</h1>")
-    parts.append(f'<div class="meta">Generated {esc(generated)} · {len(creators)} creators</div>')
-    parts.append("<h2>Launch description</h2>")
-    parts.append(f"<blockquote>{esc(description)}</blockquote>")
 
-    parts.append(f"<h2>Ranked creators ({len(creators)})</h2>")
+    # --- Letterhead ---
+    parts.append('<div class="letterhead">')
+    parts.append('<div class="eyebrow">PitchFinder · Creator &amp; Press Outreach</div>')
+    parts.append(f'<h1 class="report-title">{esc(rtitle)}</h1>')
+    parts.append('<div class="report-sub">Creator &amp; Press Outreach Brief</div>')
+    parts.append(f'<div class="report-meta">Prepared {esc(generated)} · {len(creators)} ranked targets</div>')
+    parts.append("</div>")
 
-    # Summary table
-    parts.append('<table class="summary-table"><thead><tr>')
-    parts.append("<th>#</th><th>Creator</th><th>Platform</th><th>Score</th><th>Influence</th><th>Channel</th><th>Contact</th>")
+    # --- Stats ---
+    tier_a = sum(1 for c in creators if c.get("tier") == "A")
+    tier_b = sum(1 for c in creators if c.get("tier") == "B")
+    with_contact = sum(1 for c in creators if _resolve_contact(c)[4] in ("email", "twitter", "linkedin"))
+    parts.append('<div class="statbar">')
+    for n, lbl, cls in [(len(creators), "Ranked targets", ""), (tier_a, "Tier A · recommend", "a"),
+                        (tier_b, "Tier B · worth it", "b"), (with_contact, "With contact", "")]:
+        parts.append(f'<div class="stat"><div class="stat-num {cls}">{n}</div><div class="stat-label">{esc(lbl)}</div></div>')
+    parts.append("</div>")
+    pcounts: dict = {}
+    for c in creators:
+        pcounts[c.get("platform", "")] = pcounts.get(c.get("platform", ""), 0) + 1
+    dist = " · ".join(f"<b>{pcounts[p]}</b> {p}" for p in ("substack", "podcast", "blog", "youtube") if pcounts.get(p))
+    if dist:
+        parts.append(f'<div class="platdist">By platform — {dist}</div>')
+
+    # --- The Brief ---
+    parts.append('<h2 class="sec">The Brief</h2>')
+    if meta.get("one_liner"):
+        parts.append(f'<div class="brief-lead">{esc(meta["one_liner"])}</div>')
+    if meta.get("positioning"):
+        parts.append(f'<div class="brief-body">{esc(meta["positioning"])}</div>')
+    if not meta.get("one_liner") and not meta.get("positioning"):
+        parts.append(f'<div class="brief-body">{esc(description)}</div>')
+    if meta.get("themes"):
+        parts.append('<div class="chips-label">Themes</div><div class="chips">')
+        parts.append("".join(f'<span class="chip">{esc(t)}</span>' for t in meta["themes"]))
+        parts.append("</div>")
+    if meta.get("competitors"):
+        parts.append('<div class="chips-label">Competitors</div><div class="chips">')
+        parts.append("".join(f'<span class="chip comp">{esc(t)}</span>' for t in meta["competitors"]))
+        parts.append("</div>")
+
+    # --- Index table ---
+    parts.append(f'<h2 class="sec">Ranked Creators · {len(creators)}</h2>')
+    parts.append('<div class="index-wrap"><table class="index"><thead><tr>')
+    parts.append('<th class="r">#</th><th>Tier</th><th>Creator</th><th>Platform</th><th class="r">Score</th><th>Contact</th>')
     parts.append("</tr></thead><tbody>")
     for i, c in enumerate(creators, 1):
-        channel_link = link(c.get("url"), c.get("url"))
-        contact = c.get("contact_email") or c.get("contact_other") or "—"
-        if c.get("contact_email"):
-            contact = link(f"mailto:{c['contact_email']}", c["contact_email"])
-        elif c.get("contact_other"):
-            contact = link(c["contact_other"], c["contact_other"])
+        em, tw, lk, best, bt = _resolve_contact(c)
+        tier = c.get("tier", "")
+        cdot = f'<span class="tier-dot {esc(tier)}"></span> {esc(tier)}' if tier else ""
+        cname = link(c.get("url"), c["name"]) if c.get("url") else esc(c["name"])
+        if bt in ("email", "email?"):
+            ct = link("mailto:" + em, "✉ email")
+        elif bt == "twitter":
+            ct = link(tw, "𝕏 X")
+        elif bt == "linkedin":
+            ct = link(lk, "in LinkedIn")
+        elif bt == "about":
+            ct = link(best, "🔗 about")
+        else:
+            ct = "—"
         parts.append(
-            f"<tr><td class=num>{i}</td>"
-            f"<td>{esc(c['name'])}</td>"
-            f"<td>{esc(c['platform'])}</td>"
-            f"<td class=num>{c['top_score']}</td>"
-            f"<td class=num>{c['influence_score']}</td>"
-            f"<td>{channel_link}</td>"
-            f"<td>{contact}</td></tr>"
+            f'<tr><td class="r sc">{i}</td>'
+            f'<td>{cdot}</td>'
+            f'<td class="cname">{cname}</td>'
+            f'<td class="plat">{esc(c["platform"])}</td>'
+            f'<td class="r sc">{c["top_score"]}</td>'
+            f'<td class="ct">{ct}</td></tr>'
         )
-    parts.append("</tbody></table>")
+    parts.append("</tbody></table></div>")
+
+    parts.append('<h2 class="sec">Target Profiles</h2>')
 
     # Per-creator detail
     for i, c in enumerate(creators, 1):
-        parts.append('<div class="creator">')
+        tier = c.get("tier", "")
+        parts.append(f'<div class="creator {esc(tier)}">')
         tier_badge = (
-            f'<span class="badge tier-{esc(c["tier"]).lower()}">Tier {esc(c["tier"])}</span> '
-            if c.get("tier") else ""
+            f'<span class="badge tier-{esc(tier).lower()}">Tier {esc(tier)}</span> '
+            if tier else ""
         )
         parts.append(
-            f'<h3>{i}. {tier_badge}{esc(c["name"])} '
+            f'<h3><span class="rk">{i}.</span> {esc(c["name"])} '
+            f'{tier_badge}'
             f'<span class="badge platform">{esc(c["platform"])}</span> '
             f'<span class="badge">score {c["top_score"]}</span>'
             f'</h3>'
@@ -781,6 +904,11 @@ blockquote {
 
         parts.append("</div>")
 
+    parts.append("<footer>")
+    parts.append("Prepared by PitchFinder · Creator &amp; Press Outreach Brief<br>")
+    parts.append("Method — open-web discovery (Brave · Querit) → relevance scoring → A/B tiering "
+                 "(neutral third parties only) → contact resolution → deep verification of Tier-A leads.")
+    parts.append("</footer>")
     parts.append("</body></html>")
     return "\n".join(parts)
 
@@ -788,17 +916,28 @@ blockquote {
 # ---------- show ----------
 
 
-def _build_report(db: str, search_id: int, min_score: int) -> Optional[tuple[str, list[dict]]]:
+def _build_report(db: str, search_id: int, min_score: int) -> Optional[tuple[str, list[dict], dict]]:
     """Load ranked creators for a search with angles + deep-dive + tier attached
-    and tier-ordered (drops removed). Returns (description, creators) or None."""
+    and tier-ordered (drops removed). Returns (description, creators, meta) or None.
+    meta = {title, one_liner, positioning, themes, competitors} when a brand ran it."""
     conn = get_conn(db)
     try:
-        row = conn.execute("SELECT description FROM searches WHERE id = ?", (search_id,)).fetchone()
+        row = conn.execute(
+            "SELECT description, brand, brand_meta FROM searches WHERE id = ?", (search_id,)
+        ).fetchone()
     finally:
         conn.close()
     if not row:
         return None
     description = row["description"]
+    meta: dict = {}
+    if row["brand_meta"]:
+        try:
+            meta = json.loads(row["brand_meta"]) or {}
+        except Exception:
+            meta = {}
+    if not meta.get("title") and row["brand"]:
+        meta["title"] = str(row["brand"]).replace("-", " ").replace("_", " ").title()
 
     creators = _rank_creators(db, search_id, min_score, max_creators=999)
     conn = get_conn(db)
@@ -832,7 +971,7 @@ def _build_report(db: str, search_id: int, min_score: int) -> Optional[tuple[str
         conn.close()
 
     creators = _attach_and_order_tiers(db, search_id, creators)
-    return description, creators
+    return description, creators, meta
 
 
 def show_search(db: str, search_id: int, min_score: int, output: Optional[Path]) -> None:
@@ -840,8 +979,8 @@ def show_search(db: str, search_id: int, min_score: int, output: Optional[Path])
     if built is None:
         console.print(f"[red]Search {search_id} not found.[/red]")
         return
-    description, creators = built
-    _render_results(description, creators, search_id, output)
+    description, creators, meta = built
+    _render_results(description, creators, search_id, output, meta)
 
 
 # ---------- tiering (A / B / drop) ----------
@@ -1251,7 +1390,10 @@ def run_campaign(
     )
     conn = get_conn(db)
     try:
-        conn.execute("UPDATE searches SET brand = ? WHERE id = ?", (cfg.brand, search_id))
+        conn.execute(
+            "UPDATE searches SET brand = ?, brand_meta = ? WHERE id = ?",
+            (cfg.brand, json.dumps(cfg.report_meta()), search_id),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -1270,7 +1412,7 @@ def run_campaign(
 
     # 5. Backfill pitch angles for the kept (A+B) set.
     built = _build_report(db, search_id, tier_min_score)
-    description, creators = built if built else (desc, [])
+    description, creators, _meta = built if built else (desc, [], {})
     made = _ensure_angles(db, search_id, description, creators)
     if made:
         console.print(f"   backfilled {made} pitch-angle set(s)")
@@ -1291,9 +1433,9 @@ def run_campaign(
     # 7. Render all three formats (rebuild to pick up deep-dive + angles).
     built = _build_report(db, search_id, tier_min_score)
     if built:
-        description, creators = built
+        description, creators, meta = built
         stem = reports_dir / f"{cfg.brand}-{datetime.utcnow().strftime('%Y%m%d')}"
         for ext in (".html", ".csv", ".md"):
-            _render_results(description, creators, search_id, stem.with_suffix(ext))
+            _render_results(description, creators, search_id, stem.with_suffix(ext), meta)
     console.print(f"[green]Campaign done[/green] (search_id={search_id})")
     return search_id
