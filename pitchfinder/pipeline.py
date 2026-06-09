@@ -560,7 +560,7 @@ def _render_html(description: str, creators: list[dict], search_id: int,
 * { box-sizing: border-box; }
 body {
   font-family: var(--serif);
-  max-width: 920px; margin: 0 auto; padding: 0 1.4em 5em;
+  max-width: 780px; margin: 0 auto; padding: 0 1.4em 5em;
   line-height: 1.65; color: var(--ink); background: var(--paper);
   -webkit-font-smoothing: antialiased; font-size: 17px;
 }
@@ -604,7 +604,7 @@ h2.sec { font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.2em;
 /* The Brief */
 .brief-lead { font-family: var(--display); font-size: 1.5rem; font-weight: 400;
   line-height: 1.4; margin: 0 0 0.9em; letter-spacing: -0.01em; }
-.brief-body { font-size: 1.02rem; color: #41454c; max-width: 64ch; margin: 0 0 1.3em; }
+.brief-body { font-size: 1.02rem; color: #41454c; margin: 0 0 1.3em; }
 .chips { display: flex; flex-wrap: wrap; gap: 0.5em; margin: 0.5em 0 0.4em; }
 .chip { font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.02em;
   padding: 0.3em 0.7em; background: var(--accent-soft); color: var(--accent);
