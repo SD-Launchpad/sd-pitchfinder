@@ -47,6 +47,7 @@ class BudgetCfg:
 @dataclass
 class BrandConfig:
     brand: str
+    display_name: str = ""        # optional pretty title for the report header
     one_liner: str = ""
     positioning: str = ""
     themes: list[str] = field(default_factory=list)
@@ -57,6 +58,25 @@ class BrandConfig:
     tiering: TieringCfg = field(default_factory=TieringCfg)
     deepdive: DeepDiveCfg = field(default_factory=DeepDiveCfg)
     budget: BudgetCfg = field(default_factory=BudgetCfg)
+
+    def report_meta(self) -> dict:
+        """Structured metadata for the HTML report header / brief."""
+        if self.display_name:
+            title = self.display_name
+        else:
+            # brand (title-cased) + product line if the one-liner names one.
+            title = self.brand.replace("-", " ").replace("_", " ").title()
+            if "(" in self.one_liner and ")" in self.one_liner:
+                inner = self.one_liner.split("(", 1)[1].split(")", 1)[0].strip()
+                if inner and inner.lower() not in title.lower():
+                    title = f"{title} · {inner}"
+        return {
+            "title": title,
+            "one_liner": self.one_liner,
+            "positioning": self.positioning,
+            "themes": self.themes,
+            "competitors": self.competitors,
+        }
 
     def launch_description(self) -> str:
         """Compose the free-form launch description fed to search/scoring."""
@@ -82,6 +102,7 @@ def load_brand_config(path: str | Path) -> BrandConfig:
         raise ValueError(f"{path}: brand config must have a 'brand' field")
     return BrandConfig(
         brand=raw["brand"],
+        display_name=raw.get("display_name", ""),
         one_liner=raw.get("one_liner", ""),
         positioning=raw.get("positioning", ""),
         themes=list(raw.get("themes", []) or []),

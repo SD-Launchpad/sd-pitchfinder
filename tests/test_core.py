@@ -172,6 +172,33 @@ def test_resolve_contact_priority():
     assert _resolve_contact(c3) == ("", "", "", "https://p.substack.com/about", "about")
 
 
+# ---------- HTML report rendering ----------
+
+def test_render_html_branded_header_and_brief():
+    from pitchfinder.pipeline import _render_html
+    creators = [{
+        "creator_id": 1, "name": "Jane Doe", "platform": "substack", "url": "https://j.substack.com",
+        "top_score": 90, "influence_score": 70, "tier": "A", "top_items": [], "angles": [],
+        "deep_dive": None, "contact_email": "", "twitter": "https://x.com/jane", "linkedin": "",
+    }]
+    meta = {"title": "BlockRun · ClawRouter", "one_liner": "One endpoint, pay-per-call.",
+            "positioning": "Agent-native infra.", "themes": ["x402 payments"], "competitors": ["OpenRouter"]}
+    out = _render_html("desc", creators, 12, meta)
+    assert "BlockRun · ClawRouter" in out
+    assert "search 12" not in out and "PitchFinder report" not in out   # no dead id strings
+    assert "x402 payments" in out and "OpenRouter" in out               # chips
+    assert 'class="stat-num' in out and "Fraunces" in out               # stats + editorial font
+
+
+def test_render_html_no_meta_fallback():
+    from pitchfinder.pipeline import _render_html
+    creators = [{"creator_id": 1, "name": "X", "platform": "blog", "url": "", "top_score": 60,
+                 "influence_score": 50, "tier": "B", "top_items": [], "angles": [], "deep_dive": None}]
+    out = _render_html("Some launch description here.", creators, 7, None)  # meta=None
+    assert "Some launch description here." in out      # falls back to raw description
+    assert "Creator &amp; Press Outreach Brief" in out
+
+
 # ---------- db migration idempotency ----------
 
 def test_schema_has_tiers_and_brand(tmp_path):
