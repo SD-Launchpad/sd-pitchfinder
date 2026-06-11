@@ -351,7 +351,7 @@ def _rank_creators(db: str, search_id: int, min_score: int, max_creators: int) -
 
 def _resolve_contact(c: dict) -> tuple[str, str, str, str, str]:
     """Best reachable contact for a creator across all sources.
-    Priority: MiroThinker-verified email > enriched email > twitter > linkedin >
+    Priority: LinkedIn > X(twitter) > email (MiroThinker-verified > enriched) >
     about page. Returns (email, twitter, linkedin, best_contact, contact_type)."""
     dd = c.get("deep_dive") or {}
     ddc = dd.get("contact") or {}
@@ -359,12 +359,12 @@ def _resolve_contact(c: dict) -> tuple[str, str, str, str, str]:
     tw = (c.get("twitter") or ddc.get("twitter") or "").strip()
     lk = (c.get("linkedin") or ddc.get("linkedin") or "").strip()
     url = (c.get("url") or "").rstrip("/")
-    if email:
-        best, bt = email, "email"
+    if lk:
+        best, bt = lk, "linkedin"
     elif tw:
         best, bt = tw, "twitter"
-    elif lk:
-        best, bt = lk, "linkedin"
+    elif email:
+        best, bt = email, "email"
     elif url:
         best, bt = (url + "/about" if c.get("platform") == "substack" else url), "about"
     else:
@@ -871,13 +871,14 @@ footer { margin-top: 4em; padding-top: 1.5em; border-top: 1px solid var(--rule);
         if c_best:
             parts.append('<div class="contact-block">')
             parts.append('<div class="label">How to reach them</div>')
-            if c_email:
-                parts.append(f'<div class="row">📧 Email: {link("mailto:" + c_email, c_email)}</div>')
+            # 按优先级展示：LinkedIn > X(twitter) > Email
+            if c_lk:
+                parts.append(f'<div class="row">💼 LinkedIn: {link(c_lk)}</div>')
             if c_tw:
                 h = c_tw.rstrip("/").split("/")[-1].lstrip("@")
                 parts.append(f'<div class="row">🐦 Twitter/X: {link(c_tw, "@" + h)}</div>')
-            if c_lk:
-                parts.append(f'<div class="row">💼 LinkedIn: {link(c_lk)}</div>')
+            if c_email:
+                parts.append(f'<div class="row">📧 Email: {link("mailto:" + c_email, c_email)}</div>')
             if dd_contact.get("contact_form"):
                 parts.append(f'<div class="row">📨 Contact form: {link(dd_contact["contact_form"])}</div>')
             if dd_contact.get("preferred_channel"):

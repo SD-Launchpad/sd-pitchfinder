@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 import feedparser
 import httpx
 
-from pitchfinder.discovery import BROWSER_UA, HTTP_TIMEOUT, _slugify, resolve_feed_url, search_podcasts
+from pitchfinder.discovery import HTTP_TIMEOUT, _slugify, resolve_feed_url, search_podcasts
 
 logger = logging.getLogger("pitchfinder.web_discovery")
 

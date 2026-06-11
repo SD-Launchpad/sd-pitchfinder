@@ -160,16 +160,22 @@ def test_contacts_parse_substack_preloads():
 
 def test_resolve_contact_priority():
     from pitchfinder.pipeline import _resolve_contact
-    # verified deep-dive email wins
-    c = {"deep_dive": {"contact": {"email": "v@a.com"}}, "contact_email": "e@b.com",
+    # new priority: LinkedIn > X(twitter) > Email > about
+    # LinkedIn wins even when twitter + verified email present
+    c = {"deep_dive": {"contact": {"email": "v@a.com", "linkedin": "https://linkedin.com/in/h"}},
          "twitter": "https://x.com/h", "url": "https://x.sub.com", "platform": "substack"}
-    assert _resolve_contact(c)[3] == "v@a.com"
-    # no email → twitter
-    c2 = {"twitter": "https://x.com/h", "platform": "substack", "url": "https://p.substack.com"}
+    assert _resolve_contact(c)[4] == "linkedin"
+    assert _resolve_contact(c)[3] == "https://linkedin.com/in/h"
+    # no linkedin → twitter beats email
+    c2 = {"contact_email": "e@b.com", "twitter": "https://x.com/h",
+          "platform": "substack", "url": "https://p.substack.com"}
     assert _resolve_contact(c2)[4] == "twitter"
+    # only email
+    c3 = {"contact_email": "e@b.com", "platform": "blog", "url": "https://b.com"}
+    assert _resolve_contact(c3)[4] == "email"
     # nothing but url → about
-    c3 = {"platform": "substack", "url": "https://p.substack.com"}
-    assert _resolve_contact(c3) == ("", "", "", "https://p.substack.com/about", "about")
+    c4 = {"platform": "substack", "url": "https://p.substack.com"}
+    assert _resolve_contact(c4) == ("", "", "", "https://p.substack.com/about", "about")
 
 
 # ---------- HTML report rendering ----------

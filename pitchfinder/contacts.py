@@ -240,12 +240,13 @@ def enrich_creator(creator: dict, use_brave: bool = True) -> dict:
     twitter = f"https://x.com/{tw[0]}" if tw else ""
     linkedin = f"https://linkedin.com/in/{lk[0]}" if lk else ""
 
-    if best_e and best_e[2]:
-        best, btype = best_e[1], "email"
+    # 优先级：LinkedIn > X(twitter) > Email(mx_ok) > Email?(no mx) > about
+    if linkedin:
+        best, btype = linkedin, "linkedin"
     elif twitter:
         best, btype = twitter, "twitter"
-    elif linkedin:
-        best, btype = linkedin, "linkedin"
+    elif best_e and best_e[2]:
+        best, btype = best_e[1], "email"
     elif best_e:
         best, btype = best_e[1], "email?"
     elif base:

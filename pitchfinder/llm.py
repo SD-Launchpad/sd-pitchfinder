@@ -56,6 +56,11 @@ def _strip_fences(text: str) -> str:
     return _FENCE_RE.sub("", text).strip()
 
 
+# Hard per-call timeout (s). MiroThinker SSE stream can otherwise hang indefinitely
+# (a stuck campaign once ran 16h). Normal calls finish far under this.
+LLM_TIMEOUT_SECONDS = 240
+
+
 def _call_once(model: str, prompt: str, max_tokens: int) -> str:
     """One LLM round-trip. Returns raw assistant text (may be empty)."""
     client = _client_for_model(model)
@@ -67,6 +72,7 @@ def _call_once(model: str, prompt: str, max_tokens: int) -> str:
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
             stream=True,
+            timeout=LLM_TIMEOUT_SECONDS,
         )
         buf: list[str] = []
         for chunk in stream:
@@ -81,6 +87,7 @@ def _call_once(model: str, prompt: str, max_tokens: int) -> str:
         model=model,
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
+        timeout=LLM_TIMEOUT_SECONDS,
     )
     return resp.choices[0].message.content or ""
 
