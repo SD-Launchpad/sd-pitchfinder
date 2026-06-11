@@ -9,13 +9,11 @@ the last 90 days).
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import re
 import time
 
-from pitchfinder.llm import _call_json, _strip_fences
+from pitchfinder.llm import _call_json
 
 logger = logging.getLogger("pitchfinder.research")
 
