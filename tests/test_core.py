@@ -64,6 +64,36 @@ def test_normalize_blog():
     assert plat == "blog" and root == "https://simonwillison.net"
 
 
+# ---------- social search (LinkedIn/X) name-validated ----------
+
+def test_pick_social_name_match_and_reject():
+    from pitchfinder.contacts import _pick_social
+    name = "Sharon Goldman"
+    # slug/handle 含名字 → 采信（连写 handle 也命中）
+    li, tw = _pick_social([
+        {"url": "https://www.linkedin.com/in/sharon-goldman-12a"},
+        {"url": "https://x.com/sharongoldman"},
+    ], name)
+    assert li == "sharon-goldman-12a" and tw == "sharongoldman"
+    # 与名字无关 → 丢（防抓错人）
+    assert _pick_social([
+        {"url": "https://www.linkedin.com/in/john-smith"},
+        {"url": "https://x.com/randomdude"},
+    ], name) == ("", "")
+    # 非 handle 路径词（intent/share）排除
+    assert _pick_social([{"url": "https://twitter.com/intent/tweet"}], name)[1] == ""
+    # 大小写无关
+    assert _pick_social([{"url": "https://x.com/SharonGoldman"}], name)[1] == "SharonGoldman"
+    # 名字无 ≥4 字符词 → 不校验、不采信
+    assert _pick_social([{"url": "https://x.com/whoever"}], "AI") == ("", "")
+
+
+def test_run_search_default_concurrency_is_16():
+    import inspect
+    from pitchfinder.pipeline import run_search
+    assert inspect.signature(run_search).parameters["concurrency"].default == 16
+
+
 # ---------- scoring prefilter (quality-preserving throughput optimization) ----------
 
 def test_prefilter_keeps_keyword_overlap_drops_zero_overlap():

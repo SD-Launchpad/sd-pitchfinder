@@ -170,6 +170,44 @@ def _personal_site(results: list[dict], name: str) -> str:
     return ""
 
 
+def _pick_social(results: list[dict], name: str) -> tuple[str, str]:
+    """从 Brave 结果里抽 LinkedIn /in/<slug> 与 X handle，名字校验后返回 (li_slug, tw_handle)。
+
+    纯函数(不触网，可单测)。名字校验防抓错人：slug/handle 必须与 creator 名字有词重叠
+    (token ≥3)。creator 名常是节目/机构名，词不重叠就丢 —— 宁缺勿编。
+    """
+    # 名字词 ≥4 字符(排除 the/and 等弱词)；substring 匹配(连写 handle 如 sharongoldman 也命中)
+    ntoks = {t for t in re.findall(r"[a-z]{4,}", (name or "").lower())}
+    if not ntoks:
+        return "", ""
+    li, tw = "", ""
+    for r in results:
+        url = r.get("url", "") or ""
+        if not li:
+            m = re.search(r"linkedin\.com/in/([A-Za-z0-9\-_%.]+)", url, re.I)
+            if m:
+                slug = m.group(1).rstrip("/")
+                if any(t in slug.lower() for t in ntoks):
+                    li = slug
+        if not tw:
+            m = re.search(r"(?:twitter|x)\.com/([A-Za-z0-9_]{1,15})", url, re.I)
+            if m:
+                h = m.group(1)
+                if h.lower() not in _TW_SKIP and any(t in h.lower() for t in ntoks):
+                    tw = h
+        if li and tw:
+            break
+    return li, tw
+
+
+def _social_from_brave(name: str) -> tuple[str, str]:
+    """Brave 搜 creator 的 LinkedIn / X，名字校验后返回 (li_slug, tw_handle)。缺 key 返回空。"""
+    results: list[dict] = []
+    for q in (f"{name} linkedin", f"{name} twitter"):
+        results += _brave_throttled(q, 5)
+    return _pick_social(results, name)
+
+
 def enrich_creator(creator: dict, use_brave: bool = True) -> dict:
     """Resolve a reachable contact for one creator.
 
@@ -226,6 +264,16 @@ def enrich_creator(creator: dict, use_brave: bool = True) -> dict:
                         emails.append(e)
                 if emails:
                     src.append("brave:" + (urlparse(site).hostname or ""))
+
+    # Brave 搜 LinkedIn/X 补 social（名字校验防抓错人；creator 比记者难匹配但仍提升覆盖）
+    if use_brave and (not lk or not tw):
+        s_lk, s_tw = _social_from_brave(name)
+        if s_lk and not lk:
+            lk.append(s_lk)
+            src.append("brave:linkedin")
+        if s_tw and not tw:
+            tw.append(s_tw)
+            src.append("brave:twitter")
 
     emails = _clean_emails(emails)
     scored = []
