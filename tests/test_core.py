@@ -88,6 +88,15 @@ def test_prefilter_case_insensitive_and_ignores_short_terms():
     assert len(kept) == 1 and kept[0]["title"] == "MUSIC AI"
 
 
+def test_prefilter_phrase_word_partial_match_no_miss():
+    from pitchfinder.pipeline import _prefilter_candidates
+    # term is a multi-word phrase; an item containing only one of its long words
+    # MUST be kept (else we漏召 a likely-relevant item). recall-first.
+    items = [{"title": "Best AI music tools 2026", "summary": ""}]
+    kept = _prefilter_candidates(items, ["AI Music Generation"])  # no full phrase, but "music"
+    assert len(kept) == 1
+
+
 def test_prefilter_no_usable_terms_returns_all():
     from pitchfinder.pipeline import _prefilter_candidates
     items = [{"title": "x", "summary": "y"}]

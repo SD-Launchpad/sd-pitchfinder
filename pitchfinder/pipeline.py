@@ -301,15 +301,38 @@ def _norm_match(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
 
-def _prefilter_candidates(candidates: list, terms: list[str]) -> list:
-    """词面粗筛：item 的 title+summary（归一化后）含任一领域 term(≥3 字符)才保留。
+# 拆词时丢弃的泛词/停用词（太宽会把无关 item 全留下，失去过滤意义）
+_PREFILTER_STOP = {
+    "the", "and", "for", "with", "your", "you", "our", "from", "into", "this",
+    "that", "are", "best", "top", "new", "how", "using", "tool", "tools", "app",
+    "apps", "content", "creation", "based", "powered",
+}
 
-    与品牌**全部**领域词(themes+competitors+topics+keywords)零词面交集的 item，
-    LLM 必然打低分、本来就会被 min_score drop —— 所以这是质量无损的提前 drop，
-    只是用免费的词面匹配代替昂贵的 LLM 调用。recall 优先：term 宽 + OR 匹配 +
-    分隔符归一，宁多留。没有可用 term 时不过滤(保守，回退到全量打分)。
+
+def _expand_terms(terms: list[str]) -> list[str]:
+    """领域 term 扩展：既保留整短语，也拆出长单词（≥4 字符、非停用词）参与匹配，
+    避免「多词短语整体 substring 匹配太严」导致漏召（recall 优先）。
+    例：'AI Music Generation' → {'ai music generation', 'music', 'generation'}。"""
+    out: set[str] = set()
+    for t in terms:
+        n = _norm_match(t)
+        if len(n) >= 3:
+            out.add(n)
+        for w in n.split():
+            if len(w) >= 4 and w not in _PREFILTER_STOP:
+                out.add(w)
+    return sorted(out)
+
+
+def _prefilter_candidates(candidates: list, terms: list[str]) -> list:
+    """词面粗筛：item 的 title+summary（归一化后）含任一领域 term 才保留。
+
+    与品牌**全部**领域词(themes+competitors+topics+keywords，且短语已拆词)零交集的
+    item，LLM 必然打低分、本来就会被 min_score drop —— 质量无损的提前 drop，
+    只是用免费词面匹配代替 LLM 调用。recall 优先：term 宽 + 拆词 + OR 匹配 + 分隔符
+    归一，宁多留。没有可用 term 时不过滤(保守，回退全量打分)。
     """
-    norm_terms = sorted({n for t in terms if (n := _norm_match(t)) and len(n) >= 3})
+    norm_terms = _expand_terms(terms)
     if not norm_terms:
         return candidates
     kept = []
