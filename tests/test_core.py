@@ -64,6 +64,37 @@ def test_normalize_blog():
     assert plat == "blog" and root == "https://simonwillison.net"
 
 
+# ---------- scoring prefilter (quality-preserving throughput optimization) ----------
+
+def test_prefilter_keeps_keyword_overlap_drops_zero_overlap():
+    from pitchfinder.pipeline import _prefilter_candidates
+    items = [
+        {"title": "Suno vs Udio: the AI music showdown", "summary": ""},   # competitor term
+        {"title": "How to bake sourdough bread", "summary": "yeast tips"}, # zero overlap -> drop
+        {"title": "New video-to-music tool launches", "summary": "score"}, # theme term
+        {"title": "", "summary": "generative music for creators"},         # theme term in summary
+    ]
+    terms = ["video to music", "AI music", "Suno", "generative music"]
+    kept = _prefilter_candidates(items, terms)
+    titles = [k["title"] for k in kept]
+    assert "How to bake sourdough bread" not in titles      # the only off-topic one is removed
+    assert len(kept) == 3
+
+
+def test_prefilter_case_insensitive_and_ignores_short_terms():
+    from pitchfinder.pipeline import _prefilter_candidates
+    items = [{"title": "MUSIC AI", "summary": ""}, {"title": "xy", "summary": "ab"}]
+    kept = _prefilter_candidates(items, ["music", "ai"])  # "ai" (<3) ignored; "music" matches
+    assert len(kept) == 1 and kept[0]["title"] == "MUSIC AI"
+
+
+def test_prefilter_no_usable_terms_returns_all():
+    from pitchfinder.pipeline import _prefilter_candidates
+    items = [{"title": "x", "summary": "y"}]
+    assert _prefilter_candidates(items, []) == items          # no terms -> no filtering
+    assert _prefilter_candidates(items, ["ab"]) == items      # only short terms -> no filtering
+
+
 # ---------- CSV rendering ----------
 
 def test_render_csv_columns_and_values():

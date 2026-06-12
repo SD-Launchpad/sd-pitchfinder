@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -112,10 +113,20 @@ def refresh_feeds(
     table.add_column("New", justify="right")
     table.add_column("Status")
 
-    total_new = 0
-    for row in rows:
+    # 并发取 feed，串行写库（复用 run_search 的「并发取/串行写」模式，避免 SQLite 并发写冲突）
+    def _fetch_one(row):
         ct = content_type_map.get(row["platform"], "article")
-        items = fetch_feed(row["feed_url"], ct, lookback_days)
+        try:
+            items = fetch_feed(row["feed_url"], ct, lookback_days)
+        except Exception as exc:
+            logger.warning("feed fetch failed %s: %s", row["name"], exc)
+            items = []
+        return row, ct, items
+
+    total_new = 0
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        fetched = list(pool.map(_fetch_one, rows))
+    for row, ct, items in fetched:
         new_n = _insert_items(db, row["id"], ct, items)
         total_new += new_n
         status_str = "[green]ok[/green]" if items else "[red]empty/failed[/red]"
@@ -166,6 +177,7 @@ def run_search(
     lookback_days: int = 90,
     concurrency: int = 8,
     output: Optional[Path] = None,
+    prefilter_terms: Optional[list[str]] = None,
 ) -> int:
     from pitchfinder.llm import (
         extract_topics,
@@ -195,6 +207,19 @@ def run_search(
 
     # 3. Pull candidate items within lookback window
     candidates = _candidate_items(db, lookback_days)
+    # 词面预过滤：只把与品牌领域词有交集的 item 送 LLM 打分（省时省钱，质量无损）
+    if prefilter_terms:
+        terms = (
+            list(topics_payload.get("topics") or [])
+            + list(topics_payload.get("keywords") or [])
+            + list(prefilter_terms)
+        )
+        before = len(candidates)
+        candidates = _prefilter_candidates(candidates, terms)
+        console.print(
+            f"   预过滤 {before} → {len(candidates)}"
+            f"（移除 {before - len(candidates)} 个与品牌零关键词重叠的 item）"
+        )
     console.print(f"[bold]2/4[/bold] Scoring {len(candidates)} items (concurrency={concurrency})...")
     if not candidates:
         console.print("[yellow]No items in DB. Did you run `pitchfinder refresh`?[/yellow]")
@@ -268,6 +293,31 @@ def run_search(
     # 7. Render
     _render_results(description, creators_ranked, search_id, output)
     return search_id
+
+
+def _norm_match(s: str) -> str:
+    """小写 + 把连字符/标点等非字母数字归一为空格，让 'video to music' 能匹配
+    'video-to-music'、'AI/music' 等写法（避免分隔符差异造成漏召）。"""
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+
+def _prefilter_candidates(candidates: list, terms: list[str]) -> list:
+    """词面粗筛：item 的 title+summary（归一化后）含任一领域 term(≥3 字符)才保留。
+
+    与品牌**全部**领域词(themes+competitors+topics+keywords)零词面交集的 item，
+    LLM 必然打低分、本来就会被 min_score drop —— 所以这是质量无损的提前 drop，
+    只是用免费的词面匹配代替昂贵的 LLM 调用。recall 优先：term 宽 + OR 匹配 +
+    分隔符归一，宁多留。没有可用 term 时不过滤(保守，回退到全量打分)。
+    """
+    norm_terms = sorted({n for t in terms if (n := _norm_match(t)) and len(n) >= 3})
+    if not norm_terms:
+        return candidates
+    kept = []
+    for it in candidates:
+        hay = _norm_match((it["title"] or "") + " " + (it["summary"] or ""))
+        if any(t in hay for t in norm_terms):
+            kept.append(it)
+    return kept
 
 
 def _candidate_items(db: str, lookback_days: int) -> list:
@@ -1388,6 +1438,7 @@ def run_campaign(
     search_id = run_search(
         db, description=desc, min_score=search_min_score,
         max_creators=40, lookback_days=lookback_days, output=None,
+        prefilter_terms=[*cfg.themes, *cfg.competitors, cfg.brand],
     )
     conn = get_conn(db)
     try:
