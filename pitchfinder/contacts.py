@@ -176,10 +176,17 @@ def _pick_social(results: list[dict], name: str) -> tuple[str, str]:
     纯函数(不触网，可单测)。名字校验防抓错人：slug/handle 必须与 creator 名字有词重叠
     (token ≥3)。creator 名常是节目/机构名，词不重叠就丢 —— 宁缺勿编。
     """
-    # 名字词 ≥4 字符(排除 the/and 等弱词)；substring 匹配(连写 handle 如 sharongoldman 也命中)
-    ntoks = {t for t in re.findall(r"[a-z]{4,}", (name or "").lower())}
-    if not ntoks:
+    # 名字校验防抓错人：handle/slug 连写 与 creator 名连写**一方完整包含另一方**(≥4 字符)。
+    # 比单词 substring 严得多：泛名 creator("AI Music Unmuted")不会误匹配 @MusicStarAI
+    # (连写 "aimusicunmuted" 与 "musicstarai" 互不包含)。宁缺勿编 > 覆盖率。
+    ncomp = re.sub(r"[^a-z0-9]", "", (name or "").lower())
+    if len(ncomp) < 4:
         return "", ""
+
+    def _belongs(cand: str) -> bool:
+        hc = re.sub(r"[^a-z0-9]", "", cand.lower())
+        return len(hc) >= 4 and (hc in ncomp or ncomp in hc)
+
     li, tw = "", ""
     for r in results:
         url = r.get("url", "") or ""
@@ -187,13 +194,13 @@ def _pick_social(results: list[dict], name: str) -> tuple[str, str]:
             m = re.search(r"linkedin\.com/in/([A-Za-z0-9\-_%.]+)", url, re.I)
             if m:
                 slug = m.group(1).rstrip("/")
-                if any(t in slug.lower() for t in ntoks):
+                if _belongs(slug):
                     li = slug
         if not tw:
             m = re.search(r"(?:twitter|x)\.com/([A-Za-z0-9_]{1,15})", url, re.I)
             if m:
                 h = m.group(1)
-                if h.lower() not in _TW_SKIP and any(t in h.lower() for t in ntoks):
+                if h.lower() not in _TW_SKIP and _belongs(h):
                     tw = h
         if li and tw:
             break

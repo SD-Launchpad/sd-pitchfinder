@@ -84,8 +84,12 @@ def test_pick_social_name_match_and_reject():
     assert _pick_social([{"url": "https://twitter.com/intent/tweet"}], name)[1] == ""
     # 大小写无关
     assert _pick_social([{"url": "https://x.com/SharonGoldman"}], name)[1] == "SharonGoldman"
-    # 名字无 ≥4 字符词 → 不校验、不采信
+    # 名字太短(连写 <4) → 不校验、不采信
     assert _pick_social([{"url": "https://x.com/whoever"}], "AI") == ("", "")
+    # 泛名 creator 防误匹配：连写互不包含 → 砍（@MusicStarAI ≠ "AI Music Unmuted"）
+    assert _pick_social([{"url": "https://x.com/MusicStarAI"}], "AI Music Unmuted")[1] == ""
+    # handle ≈ 名字连写 → 留
+    assert _pick_social([{"url": "https://x.com/ainewsletter"}], "AI Newsletter")[1] == "ainewsletter"
 
 
 def test_run_search_default_concurrency_is_16():
