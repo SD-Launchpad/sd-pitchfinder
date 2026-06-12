@@ -1,6 +1,6 @@
-"""MiroThinker deep-research enrichment for ranked creators.
+"""Apodex deep-research enrichment for ranked creators.
 
-Uses MiroMind's mirothinker-1-7-deepresearch model via OpenAI-compatible
+Uses Apodex's apodex-1-0-deepresearch model via OpenAI-compatible
 chat completions. Each call does web search + verification under the hood.
 Expensive (~$0.30 per creator) but produces high-quality "verified context"
 that is otherwise impossible to get from in-DB items alone (we only keep
@@ -17,7 +17,7 @@ from pitchfinder.llm import _call_json
 
 logger = logging.getLogger("pitchfinder.research")
 
-DEFAULT_MIROTHINKER_MODEL = "mirothinker-1-7-deepresearch"
+DEFAULT_APODEX_MODEL = "apodex-1-0-deepresearch"
 
 # Empty/default payload returned on any failure so the renderer never crashes.
 EMPTY_PAYLOAD = {
@@ -39,7 +39,7 @@ EMPTY_PAYLOAD = {
 
 
 def deep_research_model() -> str:
-    return os.getenv("MIROMIND_DEEPRESEARCH_MODEL", DEFAULT_MIROTHINKER_MODEL)
+    return os.getenv("APODEX_DEEPRESEARCH_MODEL", DEFAULT_APODEX_MODEL)
 
 
 def deep_dive_creator(
@@ -51,7 +51,7 @@ def deep_dive_creator(
 ) -> dict:
     """Run a deep-research pass on a single creator.
 
-    If model starts with 'mirothinker' (default), uses MiroThinker's
+    If model starts with 'apodex' (default), uses Apodex's
     web-search + verification prompt. Otherwise (e.g. Sonnet 4.6 used as
     cheaper fallback for lower-ranked creators) uses a best-effort-from-
     training-data prompt that is honest about what cannot be verified.
@@ -60,7 +60,7 @@ def deep_dive_creator(
     return EMPTY_PAYLOAD with `error` populated.
     """
     chosen_model = model or deep_research_model()
-    is_research_agent = chosen_model.startswith("mirothinker")
+    is_research_agent = chosen_model.startswith("apodex")
 
     if is_research_agent:
         prompt = _research_prompt_web_search(creator_name, creator_url, launch_description)

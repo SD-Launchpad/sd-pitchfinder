@@ -18,10 +18,10 @@ import yaml
 class DiscoveryCfg:
     providers: list[str] = field(default_factory=lambda: ["brave", "querit"])
     per_platform_queries: int = 4
-    # Trigger the (pricier) MiroThinker discovery only when cheap web discovery
+    # Trigger the (pricier) Apodex discovery only when cheap web discovery
     # returns fewer than this many candidates.
-    mirothinker_fallback_min: int = 60
-    mirothinker_model: str = "mirothinker-1-7-deepresearch-mini"
+    apodex_fallback_min: int = 60
+    apodex_model: str = "apodex-1-0-deepresearch-mini"
 
 
 @dataclass
@@ -36,12 +36,12 @@ class TieringCfg:
 class DeepDiveCfg:
     tier: str = "A"               # only deep-dive this tier
     top_n: int = 5                # …and only its top N
-    model: str = "mirothinker-1-7-deepresearch"
+    model: str = "apodex-1-0-deepresearch"
 
 
 @dataclass
 class BudgetCfg:
-    max_deepdive: int = 8         # hard cap on MiroThinker deep-dive calls / run
+    max_deepdive: int = 8         # hard cap on Apodex deep-dive calls / run
 
 
 @dataclass

@@ -424,7 +424,7 @@ def _rank_creators(db: str, search_id: int, min_score: int, max_creators: int) -
 
 def _resolve_contact(c: dict) -> tuple[str, str, str, str, str]:
     """Best reachable contact for a creator across all sources.
-    Priority: LinkedIn > X(twitter) > email (MiroThinker-verified > enriched) >
+    Priority: LinkedIn > X(twitter) > email (Apodex-verified > enriched) >
     about page. Returns (email, twitter, linkedin, best_contact, contact_type)."""
     dd = c.get("deep_dive") or {}
     ddc = dd.get("contact") or {}
@@ -908,9 +908,9 @@ footer { margin-top: 4em; padding-top: 1.5em; border-top: 1px solid var(--rule);
         dd = c.get("deep_dive")
         if dd and not dd.get("error"):
             source_model = dd.get("_source_model") or c.get("deep_dive_model") or ""
-            if source_model.startswith("mirothinker"):
+            if source_model.startswith("apodex"):
                 dd_class = "dd"
-                dd_label = "✓ Verified context (MiroThinker • live web search)"
+                dd_label = "✓ Verified context (Apodex • live web search)"
             else:
                 dd_class = "dd dd-sonnet"
                 dd_label = f"○ Context ({esc(source_model or 'LLM')} • from training data, no live search)"
@@ -1201,7 +1201,7 @@ def run_enrich_contacts(db: str, search_id: int, use_brave: bool = True) -> dict
     return {"total": len(results), "real": real}
 
 
-# ---------- deep-dive (MiroThinker enrichment) ----------
+# ---------- deep-dive (Apodex enrichment) ----------
 
 
 def run_deep_dive(
@@ -1216,15 +1216,15 @@ def run_deep_dive(
 ) -> None:
     """Run a deep-research pass on top-N creators of a given search.
 
-    Uses MiroThinker (web search + verification) by default; pass `model`
+    Uses Apodex (web search + verification) by default; pass `model`
     e.g. 'anthropic/claude-sonnet-4.6' to do a cheaper best-effort run
     without live search.
     """
-    is_mirothinker = (model or os.getenv("MIROMIND_DEEPRESEARCH_MODEL", "mirothinker-1-7-deepresearch")).startswith("mirothinker")
-    if is_mirothinker and not os.getenv("MIROMIND_API_KEY"):
-        raise RuntimeError("MIROMIND_API_KEY is not set. Put it in .env or export it.")
-    if not is_mirothinker and not os.getenv("OPENROUTER_API_KEY"):
-        raise RuntimeError("OPENROUTER_API_KEY is not set (needed for non-MiroThinker models).")
+    is_apodex = (model or os.getenv("APODEX_DEEPRESEARCH_MODEL", "apodex-1-0-deepresearch")).startswith("apodex")
+    if is_apodex and not os.getenv("APODEX_API_KEY"):
+        raise RuntimeError("APODEX_API_KEY is not set. Put it in .env or export it.")
+    if not is_apodex and not os.getenv("OPENROUTER_API_KEY"):
+        raise RuntimeError("OPENROUTER_API_KEY is not set (needed for non-Apodex models).")
 
     from pitchfinder.research import deep_dive_creator, deep_research_model
 
@@ -1406,7 +1406,7 @@ def run_campaign(
 ) -> int:
     """End-to-end funnel for one brand. Returns the search_id.
 
-    discover-web (+ MiroThinker fallback) → refresh → search → auto-tier →
+    discover-web (+ Apodex fallback) → refresh → search → auto-tier →
     backfill angles for A+B → deep-dive Tier-A top-N (budget-capped) →
     render html + csv + md to reports/<brand>-<UTCdate>.{html,csv,md}.
     """
@@ -1420,7 +1420,7 @@ def run_campaign(
     reports_dir = Path("reports")
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Discovery — cheap web sweep, MiroThinker only as fallback.
+    # 1. Discovery — cheap web sweep, Apodex only as fallback.
     if not skip_discovery:
         from pitchfinder.web_discovery import discover_web_creators
 
@@ -1439,19 +1439,19 @@ def run_campaign(
             write_candidates_yaml(cands, p)
             load_seeds(p, db)
         console.print(f"   web candidates: {len(cands)}")
-        if len(cands) < cfg.discovery.mirothinker_fallback_min and os.getenv("MIROMIND_API_KEY"):
-            console.print("   web recall low → MiroThinker fallback discovery ...")
+        if len(cands) < cfg.discovery.apodex_fallback_min and os.getenv("APODEX_API_KEY"):
+            console.print("   web recall low → Apodex fallback discovery ...")
             try:
                 mt = discover_relevant_creators(
-                    desc, list(existing), limit=30, model=cfg.discovery.mirothinker_model
+                    desc, list(existing), limit=30, model=cfg.discovery.apodex_model
                 )
                 if mt:
-                    p2 = reports_dir / f"_campaign_{cfg.brand}_mirothinker.yaml"
+                    p2 = reports_dir / f"_campaign_{cfg.brand}_apodex.yaml"
                     write_candidates_yaml(mt, p2)
                     load_seeds(p2, db)
-                console.print(f"   MiroThinker candidates: {len(mt)}")
+                console.print(f"   Apodex candidates: {len(mt)}")
             except Exception as exc:
-                console.print(f"   [yellow]MiroThinker fallback skipped: {exc}[/yellow]")
+                console.print(f"   [yellow]Apodex fallback skipped: {exc}[/yellow]")
 
     # 2. Refresh feeds.
     console.print("[bold]Refresh[/bold] — pulling feeds ...")
@@ -1496,14 +1496,14 @@ def run_campaign(
     tier_a = [c for c in creators if c.get("tier") == cfg.deepdive.tier]
     tier_a.sort(key=lambda c: c.get("top_score", 0), reverse=True)
     dd_ids = [c["creator_id"] for c in tier_a[: min(cfg.deepdive.top_n, cap)]]
-    if dd_ids and os.getenv("MIROMIND_API_KEY"):
-        console.print(f"[bold]Deep-dive[/bold] — MiroThinker on {len(dd_ids)} Tier-{cfg.deepdive.tier} creators ...")
+    if dd_ids and os.getenv("APODEX_API_KEY"):
+        console.print(f"[bold]Deep-dive[/bold] — Apodex on {len(dd_ids)} Tier-{cfg.deepdive.tier} creators ...")
         run_deep_dive(
             db, search_id, min_score=tier_min_score,
             only_creator_ids=dd_ids, model=cfg.deepdive.model,
         )
     elif dd_ids:
-        console.print("[yellow]MIROMIND_API_KEY not set — skipping deep-dive.[/yellow]")
+        console.print("[yellow]APODEX_API_KEY not set — skipping deep-dive.[/yellow]")
 
     # 7. Render all three formats (rebuild to pick up deep-dive + angles).
     built = _build_report(db, search_id, tier_min_score)

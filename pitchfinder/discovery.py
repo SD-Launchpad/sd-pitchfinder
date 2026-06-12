@@ -253,7 +253,7 @@ def discover_relevant_creators(
     limit: int = 30,
     model: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Use MiroThinker (web search) to find AI/tech creators relevant to a launch topic.
+    """Use Apodex (web search) to find AI/tech creators relevant to a launch topic.
 
     Returns a list of candidate dicts:
       { name, platform, handle, url, feed_url, topics, influence_score, why_relevant }
@@ -358,11 +358,11 @@ def write_candidates_yaml(candidates: list[dict[str, Any]], output_path: Path) -
 
     def _notes(c: dict) -> str:
         # Respect a pre-set notes (e.g. from web discovery); else build the
-        # MiroThinker-style note from why_relevant.
+        # Apodex-style note from why_relevant.
         if c.get("notes"):
             return c["notes"]
         why = c.get("why_relevant", "")
-        return f"DISCOVERED via MiroThinker. Why: {why}. Verify feed_url before loading."
+        return f"DISCOVERED via Apodex. Why: {why}. Verify feed_url before loading."
 
     body = {
         "creators": [

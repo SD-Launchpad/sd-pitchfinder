@@ -44,8 +44,8 @@ platforms: [substack, blog, podcast, youtube]
 discovery:
   providers: [brave, querit]
   per_platform_queries: 4
-  mirothinker_fallback_min: 60
-  mirothinker_model: mirothinker-1-7-deepresearch-mini
+  apodex_fallback_min: 60
+  apodex_model: apodex-1-0-deepresearch-mini
 
 tiering:
   model: anthropic/claude-sonnet-4.6   # judgment task → strong model
@@ -54,7 +54,7 @@ tiering:
 deepdive:
   tier: A
   top_n: 5
-  model: mirothinker-1-7-deepresearch
+  model: apodex-1-0-deepresearch
 
 budget:
   max_deepdive: 8

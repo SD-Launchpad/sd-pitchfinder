@@ -198,10 +198,10 @@ def test_build_tier_prompt_no_competitors_ok():
     assert "no-url" in p and "1\tX" in p
 
 
-# ---------- JSON parse robustness (MiroThinker bad escapes) ----------
+# ---------- JSON parse robustness (Apodex bad escapes) ----------
 
 def test_parse_json_tolerates_invalid_backslash_escape():
-    # MiroThinker-style payload with an illegal \$ and a fenced wrapper
+    # Apodex-style payload with an illegal \$ and a fenced wrapper
     raw = '```json\n{"pitch_hook": "save \\$10k", "ok": true}\n```'
     out = _parse_json(raw)
     assert out["ok"] is True and "10k" in out["pitch_hook"]

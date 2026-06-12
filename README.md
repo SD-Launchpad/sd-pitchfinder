@@ -54,7 +54,7 @@ pitchfinder campaign brands/<brand>.yaml
 4. 分层   classify —— 用强模型(Sonnet)判 A / B / drop:
             · drop 内容农场、竞品、自家带货的商业站(只留中立第三方)
             · A = 强烈推荐建联,B = 可以建联
-5. 深验   deep-dive —— 用 MiroThinker 对 Tier-A 头部做真实 web 搜索,
+5. 深验   deep-dive —— 用 Apodex 对 Tier-A 头部做真实 web 搜索,
             拿到 verified 联系方式 + 近期原话 + pitch hook
 ```
 
@@ -64,7 +64,7 @@ pitchfinder campaign brands/<brand>.yaml
 
 - **A/B 分层名单**(A 在前,drop 的不出现);
 - 每个创作者一张卡片:为什么选他 → 匹配的近期作品(带链接)→ 怎么联系 → 2-3 条贴你产品的 pitch angle;
-- 头部若干个有 MiroThinker **深度核验**的联系方式和原话;
+- 头部若干个有 Apodex **深度核验**的联系方式和原话;
 - **CSV** 是扁平表,直接拖进 Google Sheet 跟进 outreach。
 
 ---
@@ -86,7 +86,7 @@ pitchfinder campaign brands/<brand>.yaml
 ```bash
 cp .env.example .env   # 然后在 .env 里填:
 OPENROUTER_API_KEY=     # 打分 + pitch angle + 分层(必填)
-MIROMIND_API_KEY=       # 深度核验(深验需要)
+APODEX_API_KEY=         # 深度核验(深验需要)
 BRAVE_API_KEY=          # 全网发现(主)
 QUERIT_API_TOKEN=       # 全网发现(补);Brave/Querit 有一个就能用
 ```
@@ -95,7 +95,7 @@ QUERIT_API_TOKEN=       # 全网发现(补);Brave/Querit 有一个就能用
 
 ## 成本
 
-单轮 campaign ≈ **$1.5–3**(发现/打分很便宜,大头是 Tier-A top-N 的 MiroThinker 深验)。深验贵的留到最后、只跑头部,所以可控。
+单轮 campaign ≈ **$1.5–3**(发现/打分很便宜,大头是 Tier-A top-N 的 Apodex 深验)。深验贵的留到最后、只跑头部,所以可控。
 
 ## 测试
 

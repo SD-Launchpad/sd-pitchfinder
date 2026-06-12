@@ -22,12 +22,12 @@ _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
 
 
 def _client_for_model(model: str) -> OpenAI:
-    """Route to MiroMind for mirothinker-* model ids, OpenRouter otherwise."""
-    if model.startswith("mirothinker"):
-        api_key = os.getenv("MIROMIND_API_KEY")
+    """Route to Apodex for apodex-* model ids, OpenRouter otherwise."""
+    if model.startswith("apodex"):
+        api_key = os.getenv("APODEX_API_KEY")
         if not api_key:
-            raise RuntimeError("MIROMIND_API_KEY is not set")
-        base_url = os.getenv("MIROMIND_BASE_URL", "https://api.miromind.ai/v1")
+            raise RuntimeError("APODEX_API_KEY is not set")
+        base_url = os.getenv("APODEX_BASE_URL", "https://api.apodex.ai/v1")
         return OpenAI(api_key=api_key, base_url=base_url)
 
     api_key = os.getenv("OPENROUTER_API_KEY")
@@ -56,7 +56,7 @@ def _strip_fences(text: str) -> str:
     return _FENCE_RE.sub("", text).strip()
 
 
-# Hard per-call timeout (s). MiroThinker SSE stream can otherwise hang indefinitely
+# Hard per-call timeout (s). Apodex SSE stream can otherwise hang indefinitely
 # (a stuck campaign once ran 16h). Normal calls finish far under this.
 LLM_TIMEOUT_SECONDS = 240
 
@@ -64,7 +64,7 @@ LLM_TIMEOUT_SECONDS = 240
 def _call_once(model: str, prompt: str, max_tokens: int) -> str:
     """One LLM round-trip. Returns raw assistant text (may be empty)."""
     client = _client_for_model(model)
-    use_stream = model.startswith("mirothinker")
+    use_stream = model.startswith("apodex")
 
     if use_stream:
         stream = client.chat.completions.create(
@@ -93,7 +93,7 @@ def _call_once(model: str, prompt: str, max_tokens: int) -> str:
 
 
 # A backslash NOT starting a valid JSON escape (" \ / b f n r t u) is illegal.
-# MiroThinker occasionally emits these (e.g. raw LaTeX / Windows paths / "\$"),
+# Apodex occasionally emits these (e.g. raw LaTeX / Windows paths / "\$"),
 # which makes json.loads raise "Invalid \escape" and the whole deep-dive return
 # empty. Doubling such lone backslashes recovers the payload.
 _BAD_ESCAPE_RE = re.compile(r'\\(?!["\\/bfnrtu])')
@@ -132,11 +132,11 @@ def _call_json(model: str, prompt: str, max_tokens: int = 1024, max_retries: int
     Retries on:
     - empty / whitespace-only responses (common on flaky OpenRouter routes
       like v4-pro / glm-5.1 → ~40-86% empty in our testing)
-    - transient SSE/network errors (MiroThinker occasionally drops the
+    - transient SSE/network errors (Apodex occasionally drops the
       streamed body, e.g. 'peer closed connection')
     - JSON parse failures (model output a near-miss we couldn't salvage)
 
-    MiroThinker uses streaming (SSE). Everything else uses non-stream.
+    Apodex uses streaming (SSE). Everything else uses non-stream.
     Final failure raises so the caller can degrade gracefully.
     """
     last_exc: Exception | None = None
