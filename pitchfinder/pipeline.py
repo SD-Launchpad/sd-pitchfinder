@@ -175,7 +175,7 @@ def run_search(
     min_score: int = 70,
     max_creators: int = 30,
     lookback_days: int = 90,
-    concurrency: int = 8,
+    concurrency: int = 16,
     output: Optional[Path] = None,
     prefilter_terms: Optional[list[str]] = None,
 ) -> int:
