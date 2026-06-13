@@ -95,7 +95,7 @@ def show(
 @app.command()
 def campaign(
     config: Path = typer.Argument(..., exists=True, readable=True, help="brand.yaml"),
-    budget: Optional[int] = typer.Option(None, "--budget", help="Hard cap on MiroThinker deep-dives"),
+    budget: Optional[int] = typer.Option(None, "--budget", help="Hard cap on Apodex deep-dives"),
     skip_discovery: bool = typer.Option(False, "--skip-discovery", help="Reuse existing library"),
     lookback_days: int = typer.Option(90, "--lookback-days"),
     db: str = typer.Option(DEFAULT_DB),
@@ -217,14 +217,14 @@ def deep_dive(
     model: Optional[str] = typer.Option(
         None,
         "--model",
-        help="Override deep-research model. Default = MIROMIND_DEEPRESEARCH_MODEL "
-        "(mirothinker-1-7-deepresearch). Use e.g. 'anthropic/claude-sonnet-4.6' for cheaper best-effort.",
+        help="Override deep-research model. Default = APODEX_DEEPRESEARCH_MODEL "
+        "(apodex-1-0-deepresearch). Use e.g. 'anthropic/claude-sonnet-4.6' for cheaper best-effort.",
     ),
     db: str = typer.Option(DEFAULT_DB),
 ) -> None:
     """Enrich top-N ranked creators with web-search + verification.
 
-    Default: MiroThinker (live web search). Pass --model anthropic/claude-sonnet-4.6
+    Default: Apodex (live web search). Pass --model anthropic/claude-sonnet-4.6
     to do a cheaper best-effort pass without live search.
     """
     from pitchfinder.pipeline import run_deep_dive
@@ -333,11 +333,11 @@ def discover_creators(
         help="YAML file to write candidate stanzas to",
     ),
     model: Optional[str] = typer.Option(
-        None, "--model", help="Override deep-research model (default: MIROMIND_DEEPRESEARCH_MODEL)"
+        None, "--model", help="Override deep-research model (default: APODEX_DEEPRESEARCH_MODEL)"
     ),
     db: str = typer.Option(DEFAULT_DB),
 ) -> None:
-    """Use MiroThinker (web search) to expand the seed library.
+    """Use Apodex (web search) to expand the seed library.
 
     Finds active AI/tech creators relevant to a launch topic, skipping
     those already in the DB. Outputs YAML stanzas you can review and
@@ -356,7 +356,7 @@ def discover_creators(
         existing = [r["name"] for r in rows]
     finally:
         conn.close()
-    console.print(f"Found {len(existing)} existing creators; asking MiroThinker for {limit} new ones (this takes 5-15 min)...")
+    console.print(f"Found {len(existing)} existing creators; asking Apodex for {limit} new ones (this takes 5-15 min)...")
 
     candidates = discover_relevant_creators(
         topic_description=description,

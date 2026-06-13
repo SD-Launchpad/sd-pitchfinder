@@ -1,9 +1,9 @@
 """Cheap, broad creator discovery via web search (Brave primary, Querit supplement).
 
 Why: the rest of discovery only finds creators that already have a known RSS feed
-(seed library + MiroThinker). This sweeps the open web for newsletters / blogs /
+(seed library + Apodex). This sweeps the open web for newsletters / blogs /
 YouTube channels on the launch themes, resolves their feeds, and emits seed-loadable
-candidates — the wide top of the funnel before scoring + tiering + (pricey) MiroThinker.
+candidates — the wide top of the funnel before scoring + tiering + (pricey) Apodex.
 
 API shapes mirror shanda-pulse's verified clients:
   Brave : GET  {BRAVE_SEARCH_URL}?q=..&count=N   header X-Subscription-Token
