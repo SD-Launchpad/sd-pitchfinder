@@ -63,13 +63,17 @@ _brave_lock = threading.Lock()
 _brave_last = [0.0]
 
 
-def _brave_throttled(q: str, n: int = 5) -> list[dict]:
+def _contact_search(q: str, n: int = 5) -> list[dict]:
+    # Querit 主（合约不限速）；Querit 空了才走 Brave（free tier ~1 req/s，限速兜底）
+    r = _querit_search(q, n)
+    if r:
+        return r
     with _brave_lock:                       # Brave free tier ~1 req/s
         dt = time.monotonic() - _brave_last[0]
         if dt < 1.2:
             time.sleep(1.2 - dt)
         _brave_last[0] = time.monotonic()
-    return _brave_search(q, n) or _querit_search(q, n)
+    return _brave_search(q, n)
 
 
 def _reg(host: str) -> str:
@@ -207,11 +211,11 @@ def _pick_social(results: list[dict], name: str) -> tuple[str, str]:
     return li, tw
 
 
-def _social_from_brave(name: str) -> tuple[str, str]:
-    """Brave 搜 creator 的 LinkedIn / X，名字校验后返回 (li_slug, tw_handle)。缺 key 返回空。"""
+def _social_lookup(name: str) -> tuple[str, str]:
+    """搜 creator 的 LinkedIn / X（Querit 主、Brave 辅），名字校验后返回 (li_slug, tw_handle)。"""
     results: list[dict] = []
     for q in (f"{name} linkedin", f"{name} twitter"):
-        results += _brave_throttled(q, 5)
+        results += _contact_search(q, 5)
     return _pick_social(results, name)
 
 
@@ -262,7 +266,7 @@ def enrich_creator(creator: dict, use_brave: bool = True) -> dict:
                 break
 
     if use_brave and not _clean_emails(emails):
-        site = _personal_site(_brave_throttled(f"{name} contact", 5), name)
+        site = _personal_site(_contact_search(f"{name} contact", 5), name)
         if site:
             html = _fetch(site + "/about") or _fetch(site) or _fetch(site + "/contact")
             if html:
@@ -274,7 +278,7 @@ def enrich_creator(creator: dict, use_brave: bool = True) -> dict:
 
     # Brave 搜 LinkedIn/X 补 social（名字校验防抓错人；creator 比记者难匹配但仍提升覆盖）
     if use_brave and (not lk or not tw):
-        s_lk, s_tw = _social_from_brave(name)
+        s_lk, s_tw = _social_lookup(name)
         if s_lk and not lk:
             lk.append(s_lk)
             src.append("brave:linkedin")

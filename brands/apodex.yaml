@@ -1,16 +1,21 @@
 # PitchFinder campaign config — Apodex launch.
+# Sources (red-book, verbatim from site): website www.apodex.com / web app www.apodex.ai /
+#   API platform.apodex.ai / GitHub github.com/ApodexAI / HuggingFace huggingface.co/apodex.
 # Run end-to-end with:  pitchfinder campaign brands/apodex.yaml
 brand: apodex
 
-one_liner: "Apodex (relaunch of miromind.ai) — 'Think. Act. Verify. Evolve.' / 'Slow but Right'."
+one_liner: "Apodex — Self-Evolving Heavy-Duty Solver. The hardest problems are heavy-duty and have no existing answer; Apodex does the deep research to find one and checks every step so you can trust the result."
 
 positioning: >
-  A verification-centric autonomous AI system / agent OS for long-horizon agentic
-  tasks. Three layers: Apodex-T (deep reasoning), Apodex-H (autonomous execution
-  and tool use), Apodex-V (verifies every reasoning step before the next begins —
-  auditable, replayable, self-evolving, open-source). Built for high-stakes domains
-  where being wrong is not an option: scientific research, finance and risk, legal
-  and compliance, life sciences, software engineering.
+  A model that thinks, verifies, and rewrites itself — optimized for being right rather
+  than for generating plausible answers. Three pillars: Verified Reasoning (an independent
+  agent audits every step), Causal Discovery (actively engages the external world and seeks
+  evidence instead of guessing), and Self Evolution (continuous self-improvement loops that
+  rewrite its own logic). Built for high-stakes domains where being wrong is not an option:
+  scientific research (biomedical, clinical reasoning, materials science, genomics) and
+  enterprise (finance and risk, legal and compliance, software engineering). The web app
+  (www.apodex.ai) returns verified briefs with step-level reasoning traces and citations,
+  not chat replies.
 
 themes:
   - verifiable AI
@@ -42,7 +47,7 @@ do_not:
 platforms: [substack, blog, podcast, youtube]
 
 discovery:
-  providers: [brave, querit]
+  providers: [querit, brave]   # Querit 主（合约不限速）、Brave 辅
   per_platform_queries: 4
   apodex_fallback_min: 60
   apodex_model: apodex-1-0-deepresearch-mini
