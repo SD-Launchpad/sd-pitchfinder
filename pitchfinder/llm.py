@@ -126,6 +126,12 @@ def _parse_json(text: str) -> Any:
         raise
 
 
+def _is_timeout(exc: Exception) -> bool:
+    """Detect read/connect timeouts (httpx/openai timeout classes or 'timeout' msg)."""
+    s = f"{type(exc).__name__} {exc}".lower()
+    return "timeout" in s or "timed out" in s
+
+
 def _call_json(model: str, prompt: str, max_tokens: int = 1024, max_retries: int = 2) -> Any:
     """Make an LLM call expecting JSON output with bounded retries.
 
@@ -136,7 +142,9 @@ def _call_json(model: str, prompt: str, max_tokens: int = 1024, max_retries: int
       streamed body, e.g. 'peer closed connection')
     - JSON parse failures (model output a near-miss we couldn't salvage)
 
-    Apodex uses streaming (SSE). Everything else uses non-stream.
+    Does NOT retry on timeout: a deepresearch timeout usually means the server
+    stalled, and retrying just burns another full LLM_TIMEOUT_SECONDS window
+    (once made a single deep-dive eat 3×240s). Apodex uses streaming (SSE).
     Final failure raises so the caller can degrade gracefully.
     """
     last_exc: Exception | None = None
@@ -148,6 +156,9 @@ def _call_json(model: str, prompt: str, max_tokens: int = 1024, max_retries: int
             return _parse_json(text)
         except Exception as exc:
             last_exc = exc
+            if _is_timeout(exc):
+                logger.warning("LLM call timed out, not retrying (model=%s): %s", model, exc)
+                break
             if attempt < max_retries:
                 # Exponential backoff with jitter so we don't sync retry storms.
                 delay = (2 ** attempt) + random.uniform(0, 0.5)

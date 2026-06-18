@@ -42,6 +42,7 @@ class DeepDiveCfg:
 @dataclass
 class BudgetCfg:
     max_deepdive: int = 8         # hard cap on Apodex deep-dive calls / run
+    pitch_b_top_n: int = 60       # pitch angles: all Tier-A + top-N Tier-B by score (cost cap)
 
 
 @dataclass

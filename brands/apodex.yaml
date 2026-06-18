@@ -53,7 +53,7 @@ discovery:
   apodex_model: apodex-1-0-deepresearch-mini
 
 tiering:
-  model: anthropic/claude-sonnet-4.6   # judgment task → strong model
+  model: qwen/qwen3-max   # judgment task → strong model（避开 Anthropic 过载）
   drop_content_farms: true
 
 deepdive:
