@@ -25,6 +25,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 console = Console()
 
+# Apodex 深挖单个慢(2-8min) → 并发缩短墙钟；pitch-angle 也并发避免几百个顺序调用。
+DEEPDIVE_WORKERS = 4
+PITCH_WORKERS = 8
+
 
 # ---------- load ----------
 
@@ -268,27 +272,31 @@ def run_search(
         f"[bold]3/4[/bold] {len(creators_ranked)} creators meet min_score={min_score}"
     )
 
-    # 6. Generate pitch angles for top N
+    # 6. Generate pitch angles for top N（并发，避免几十/几百个顺序调用）
     console.print(f"[bold]4/4[/bold] Generating pitch angles for {len(creators_ranked)} creators...")
-    for entry in creators_ranked:
+
+    def _gen_entry(entry: dict) -> tuple[dict, list]:
         try:
-            angles = generate_pitch_angles(description, entry["name"], entry["top_items"])
+            return entry, generate_pitch_angles(description, entry["name"], entry["top_items"])
         except Exception as exc:
             logger.warning("pitch angles failed creator=%s: %s", entry["creator_id"], exc)
-            angles = []
-        entry["angles"] = angles
-        conn = get_conn(db)
-        try:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO pitch_angles (search_id, creator_id, angles_json)
-                VALUES (?, ?, ?)
-                """,
-                (search_id, entry["creator_id"], json.dumps(angles)),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+            return entry, []
+
+    if creators_ranked:
+        with ThreadPoolExecutor(max_workers=min(PITCH_WORKERS, len(creators_ranked))) as ex:
+            for fut in as_completed([ex.submit(_gen_entry, e) for e in creators_ranked]):
+                entry, angles = fut.result()
+                entry["angles"] = angles
+                conn = get_conn(db)
+                try:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO pitch_angles (search_id, creator_id, angles_json) "
+                        "VALUES (?, ?, ?)",
+                        (search_id, entry["creator_id"], json.dumps(angles)),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
 
     # 7. Render
     _render_results(description, creators_ranked, search_id, output)
@@ -1259,67 +1267,48 @@ def run_deep_dive(
     console.print(
         f"[bold]Deep-dive[/bold] on {len(candidates)} creators (search_id={search_id})..."
     )
-    for i, c in enumerate(candidates, 1):
-        t0 = datetime.utcnow()
-        console.print(f"  [{i}/{len(candidates)}] {c['name']} — researching...")
-        payload = deep_dive_creator(c["name"], c.get("url") or "", description, model=model)
-        elapsed = (datetime.utcnow() - t0).total_seconds()
-        ok = not payload.get("error") and payload.get("recent_themes")
-        status = "[green]ok[/green]" if ok else "[red]error/empty[/red]"
-        if payload.get("error"):
-            console.print(f"      {status} {elapsed:.1f}s — {payload['error']}")
-        else:
-            n_quotes = len(payload.get("sharp_quotes") or [])
-            n_themes = len(payload.get("recent_themes") or [])
-            console.print(f"      {status} {elapsed:.1f}s — {n_themes} themes, {n_quotes} quotes")
-
+    def _persist(c: dict, payload: dict) -> None:
+        """主线程写库（SQLite 连接不跨线程）：deep_dives + 联系方式回填。"""
         conn = get_conn(db)
         try:
             conn.execute(
-                """
-                INSERT OR REPLACE INTO deep_dives
-                  (search_id, creator_id, model, payload_json)
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    search_id,
-                    c["creator_id"],
-                    used_model,
-                    json.dumps(payload),
-                ),
+                "INSERT OR REPLACE INTO deep_dives (search_id, creator_id, model, payload_json) "
+                "VALUES (?, ?, ?, ?)",
+                (search_id, c["creator_id"], used_model, json.dumps(payload)),
             )
-            conn.commit()
-        finally:
-            conn.close()
-
-        # Optional: backfill creators.contact_email / contact_other when found
-        c_contact = (payload.get("contact") or {})
-        if c_contact.get("email") and "@" in c_contact["email"]:
-            conn = get_conn(db)
-            try:
+            c_contact = payload.get("contact") or {}
+            if c_contact.get("email") and "@" in c_contact["email"]:
                 conn.execute(
                     "UPDATE creators SET contact_email = COALESCE(contact_email, ?) WHERE id = ?",
                     (c_contact["email"], c["creator_id"]),
                 )
-                conn.commit()
-            finally:
-                conn.close()
-        elif c_contact.get("twitter") or c_contact.get("linkedin") or c_contact.get("contact_form"):
-            other_bits = [
-                c_contact.get("twitter"),
-                c_contact.get("linkedin"),
-                c_contact.get("contact_form"),
-            ]
-            other = " | ".join([x for x in other_bits if x])
-            conn = get_conn(db)
-            try:
+            elif c_contact.get("twitter") or c_contact.get("linkedin") or c_contact.get("contact_form"):
+                other = " | ".join(x for x in (c_contact.get("twitter"), c_contact.get("linkedin"),
+                                               c_contact.get("contact_form")) if x)
                 conn.execute(
                     "UPDATE creators SET contact_other = COALESCE(contact_other, ?) WHERE id = ?",
                     (other, c["creator_id"]),
                 )
-                conn.commit()
-            finally:
-                conn.close()
+            conn.commit()
+        finally:
+            conn.close()
+
+    # 深挖网络密集且单个慢(2-8min)；并发跑，线程内只做 Apodex 调用，主线程写库。
+    done = 0
+    workers = min(DEEPDIVE_WORKERS, len(candidates)) or 1
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(deep_dive_creator, c["name"], c.get("url") or "", description, model=model): c
+                for c in candidates}
+        for fut in as_completed(futs):
+            c = futs[fut]
+            payload = fut.result()  # deep_dive_creator never raises (returns EMPTY_PAYLOAD)
+            done += 1
+            ok = not payload.get("error") and payload.get("recent_themes")
+            status = "[green]ok[/green]" if ok else "[red]error/empty[/red]"
+            detail = payload["error"] if payload.get("error") else \
+                f"{len(payload.get('recent_themes') or [])} themes, {len(payload.get('sharp_quotes') or [])} quotes"
+            console.print(f"  [{done}/{len(candidates)}] {c['name']} — {status} {detail}")
+            _persist(c, payload)
 
     console.print(f"\n[green]Deep-dive complete.[/green] Run `pitchfinder show {search_id} --output reports/...html` to see the enriched report.")
 
@@ -1367,31 +1356,44 @@ def set_outreach_status(
 # ---------- campaign orchestrator (the general-agent funnel) ----------
 
 
-def _ensure_angles(db: str, search_id: int, description: str, creators: list[dict]) -> int:
-    """Generate + persist pitch angles for any creator that lacks them. Returns
-    the number generated. Keeps angle generation scoped to the kept (A+B) set."""
+def _ensure_angles(db: str, search_id: int, description: str, creators: list[dict],
+                   max_b: int = 60) -> int:
+    """Generate + persist pitch angles for the kept set, concurrently.
+
+    Scope (cost control): ALL Tier-A get angles; Tier-B is capped to the top
+    `max_b` by score (B is the lower-priority "可建联" tier). Returns count generated.
+    """
     from pitchfinder.llm import generate_pitch_angles
 
-    n = 0
-    for c in creators:
-        if c.get("angles"):
-            continue
+    a = [c for c in creators if c.get("tier") == "A"]
+    b = sorted([c for c in creators if c.get("tier") == "B"],
+               key=lambda c: c.get("top_score", 0), reverse=True)[:max_b]
+    targets = [c for c in (a + b) if not c.get("angles")]
+    if not targets:
+        return 0
+
+    def _gen(c: dict) -> tuple[dict, list]:
         try:
-            angles = generate_pitch_angles(description, c["name"], c.get("top_items", []))
+            return c, generate_pitch_angles(description, c["name"], c.get("top_items", []))
         except Exception as exc:
             logger.warning("ensure_angles failed creator=%s: %s", c["creator_id"], exc)
-            angles = []
-        c["angles"] = angles
-        conn = get_conn(db)
-        try:
-            conn.execute(
-                "INSERT OR REPLACE INTO pitch_angles (search_id, creator_id, angles_json) VALUES (?, ?, ?)",
-                (search_id, c["creator_id"], json.dumps(angles)),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-        n += 1
+            return c, []
+
+    n = 0
+    with ThreadPoolExecutor(max_workers=min(PITCH_WORKERS, len(targets))) as ex:
+        for fut in as_completed([ex.submit(_gen, c) for c in targets]):
+            c, angles = fut.result()
+            c["angles"] = angles
+            conn = get_conn(db)
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO pitch_angles (search_id, creator_id, angles_json) VALUES (?, ?, ?)",
+                    (search_id, c["creator_id"], json.dumps(angles)),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            n += 1
     return n
 
 
@@ -1488,7 +1490,7 @@ def run_campaign(
     # 5. Backfill pitch angles for the kept (A+B) set.
     built = _build_report(db, search_id, tier_min_score)
     description, creators, _meta = built if built else (desc, [], {})
-    made = _ensure_angles(db, search_id, description, creators)
+    made = _ensure_angles(db, search_id, description, creators, max_b=cfg.budget.pitch_b_top_n)
     if made:
         console.print(f"   backfilled {made} pitch-angle set(s)")
 

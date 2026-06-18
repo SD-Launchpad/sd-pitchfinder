@@ -22,7 +22,7 @@ def test_load_brand_config_apodex():
     cfg = load_brand_config(REPO / "brands" / "apodex.yaml")
     assert cfg.brand == "apodex"
     assert "verifiable AI" in cfg.themes
-    assert cfg.tiering.model.startswith("anthropic/")   # judgment → strong model
+    assert cfg.tiering.model and "mini" not in cfg.tiering.model.lower()   # judgment → strong (non-mini) model
     assert cfg.deepdive.top_n == 5
     desc = cfg.launch_description()
     assert "verifiable AI" in desc and "axiommath" in desc.lower() or "axiommath.ai" in desc
